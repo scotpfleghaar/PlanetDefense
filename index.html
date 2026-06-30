@@ -715,8 +715,9 @@
       const dx = g.bx - e.x, dy = g.by - e.y;
       const d = Math.hypot(dx, dy) || 1;
       const sp = e.speed * p.slow;
-      e.x += (dx/d) * sp * dt;
-      e.y += (dy/d) * sp * dt;
+      e.vx = (dx/d) * sp; e.vy = (dy/d) * sp; // remembered so debris can inherit momentum
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
       e.phase += dt * 3;
       // reached base?
       if (d < 30 + e.r) {
@@ -770,11 +771,39 @@
     }
     g.cores = g.cores.filter(c => !c.dead);
 
-    // particles
+    // particles — plain sparks fade fast; debris keeps its momentum, falls under gravity,
+    // bounces off a raised shield, and gently crashes / settles onto the ground.
+    const shieldUp = p.shield > 0 && p.shieldMax > 0;
+    const shR = shieldUp ? turretLayout().hw + 22 : 0;
     for (const pa of g.particles) {
-      pa.x += pa.vx * dt; pa.y += pa.vy * dt;
-      pa.vx *= 0.92; pa.vy *= 0.92;
-      pa.life -= dt;
+      if (pa.phys) {
+        // gravity disabled — debris coasts purely along the enemy's heading
+        if (shieldUp) {    // bounce off the upper shield dome
+          const dx = pa.x - g.bx, dy = pa.y - (g.by + 4), dist = Math.hypot(dx, dy) || 1;
+          if (dy < 0 && dist < shR && dist > shR - 10) {
+            const nx = dx/dist, ny = dy/dist, vdot = pa.vx*nx + pa.vy*ny;
+            if (vdot < 0) {
+              pa.vx = (pa.vx - 1.7*vdot*nx) * 0.7;
+              pa.vy = (pa.vy - 1.7*vdot*ny) * 0.7;
+              pa.x = g.bx + nx*shR; pa.y = (g.by + 4) + ny*shR;
+              g.shieldFlash = Math.max(g.shieldFlash, 0.4);
+            }
+          }
+        }
+        pa.x += pa.vx * dt; pa.y += pa.vy * dt;
+        pa.vx *= 0.99;
+        const gy = groundYAt(pa.x);
+        if (pa.y >= gy) {                 // hit the ground
+          pa.y = gy;
+          if (Math.abs(pa.vy) > 28) { pa.vy *= -0.3; pa.vx *= 0.55; } // gentle bounce
+          else { pa.vy = 0; pa.vx *= 0.7; pa.rest = (pa.rest || 0) + dt; } // settle
+        }
+        pa.life -= dt * (pa.rest ? 1.8 : 0.7); // linger in flight, fade once settled
+      } else {
+        pa.x += pa.vx * dt; pa.y += pa.vy * dt;
+        pa.vx *= 0.92; pa.vy *= 0.92;
+        pa.life -= dt;
+      }
     }
     g.particles = g.particles.filter(pa => pa.life > 0);
 
@@ -846,7 +875,8 @@
     g.kills++;
     addScore(e.pts);
     addResearch(e.pts);
-    spawnBurst(e.x, e.y, e.color, 8);
+    spawnBurst(e.x, e.y, e.color, 4); // quick flash
+    spawnDebris(e);                   // momentum-carrying debris
     if (e.carrier) grantCore(e.x, e.y);
   }
 
@@ -903,6 +933,36 @@
     }
   }
 
+  // Height of the rocky hill at a given x (interpolated from the silhouette profile).
+  function groundYAt(x) {
+    const hill = game.hill;
+    if (!hill || hill.length < 2 || !W) return H;
+    const seg = hill.length - 1;
+    const f = Math.max(0, Math.min(seg, (x / W) * seg));
+    const i = Math.min(seg - 1, Math.floor(f));
+    return hill[i].y + (hill[i+1].y - hill[i].y) * (f - i);
+  }
+
+  // Debris flung from a destroyed enemy: inherits its momentum, then physics takes over.
+  function spawnDebris(e) {
+    const g = game;
+    if (g.particles.length > 340) return; // soft cap keeps things cheap under heavy fire
+    const n = Math.min(13, 5 + Math.round(e.r * 0.5));
+    for (let i = 0; i < n; i++) {
+      // carry the enemy's full velocity (speed + heading); add only a slight break-apart scatter
+      const a = Math.random() * 6.28, s = 6 + Math.random() * 18;
+      g.particles.push({
+        x: e.x + (Math.random()-0.5) * e.r,
+        y: e.y + (Math.random()-0.5) * e.r,
+        vx: (e.vx || 0) + Math.cos(a) * s,
+        vy: (e.vy || 0) + Math.sin(a) * s,
+        life: 1.5 + Math.random() * 1.3,
+        color: e.color, size: 1.6 + Math.random() * 1.9,
+        phys: true, rest: 0,
+      });
+    }
+  }
+
   // ───────────────────────── Render ─────────────────────────
   function render() {
     const g = game, p = g.p;
@@ -938,9 +998,10 @@
 
     // particles
     for (const pa of g.particles) {
-      ctx.globalAlpha = Math.max(0, pa.life * 2.5);
+      ctx.globalAlpha = Math.max(0, Math.min(1, pa.life * 2.5));
       ctx.fillStyle = pa.color;
-      ctx.fillRect(pa.x-1.5, pa.y-1.5, 3, 3);
+      const s = pa.size || 3;
+      ctx.fillRect(pa.x - s/2, pa.y - s/2, s, s);
     }
     ctx.globalAlpha = 1;
 
