@@ -695,11 +695,7 @@
     const speedMult = 1 + (w-1) * WAVE.speedPerWave;
     const q = [];
     for (let i = 0; i < count; i++) {
-      let type = 'drone';
-      const roll = Math.random();
-      if (w >= 3 && roll < 0.18) type = 'swarm';
-      else if (w >= 2 && roll < 0.30) type = 'hulk';
-      q.push({ type, hpMult, speedMult });
+      q.push({ type: pickEnemyType(w), hpMult, speedMult });
     }
     // carriers: ~1 per wave from wave 2, scaled by beacon meta
     const carriers = Math.max(0, Math.round((w >= 2 ? 1 : 0) * game.p.carrierBoost) + (w >= 5 ? 1 : 0));
@@ -722,29 +718,63 @@
   }
 
   const ENEMY_DEFS = {
-    drone:   { hp:3,  r:9,  speed:42, pts:10, dmg:8,  color:'#0B3D91' },
-    swarm:   { hp:1,  r:6,  speed:78, pts:6,  dmg:4,  color:'#1E7F4F' },
-    hulk:    { hp:22, r:19, speed:22, pts:55, dmg:26, color:'#5B6471' },
-    carrier: { hp:10, r:14, speed:30, pts:35, dmg:12, color:'#FC3D21', carrier:true },
+    drone:    { hp:3,   r:9,  speed:42,  pts:10,  dmg:8,  color:'#0B3D91' },
+    swarm:    { hp:1,   r:6,  speed:78,  pts:6,   dmg:4,  color:'#1E7F4F' },
+    hulk:     { hp:22,  r:19, speed:22,  pts:55,  dmg:26, color:'#5B6471' },
+    sprinter: { hp:5,   r:8,  speed:120, pts:18,  dmg:10, color:'#0E7C8B' }, // very fast, fragile
+    brute:    { hp:60,  r:26, speed:15,  pts:120, dmg:44, color:'#3A4250' }, // mega-tank
+    splitter: { hp:14,  r:15, speed:34,  pts:40,  dmg:14, color:'#7A3D91', splits:2, child:'swarm' },
+    weaver:   { hp:8,   r:10, speed:62,  pts:25,  dmg:10, color:'#C98A00', weave:70 }, // zig-zags
+    armored:  { hp:26,  r:16, speed:26,  pts:70,  dmg:22, color:'#5B6471', armor:0.5 }, // halves damage
+    carrier:  { hp:10,  r:14, speed:30,  pts:35,  dmg:12, color:'#FC3D21', carrier:true },
   };
 
+  // Roster introduced one new type every 3 waves. Spawn picker draws (weighted) from
+  // whatever is unlocked at the current wave; tougher/rarer types carry lower weight.
+  const ENEMY_ROSTER = [
+    { type:'drone',    unlock:1,  weight:1.00 },
+    { type:'swarm',    unlock:1,  weight:0.50 },
+    { type:'hulk',     unlock:3,  weight:0.55 },
+    { type:'sprinter', unlock:6,  weight:0.45 },
+    { type:'brute',    unlock:9,  weight:0.28 },
+    { type:'splitter', unlock:12, weight:0.38 },
+    { type:'weaver',   unlock:15, weight:0.42 },
+    { type:'armored',  unlock:18, weight:0.35 },
+  ];
+
+  function pickEnemyType(w) {
+    let total = 0;
+    for (const r of ENEMY_ROSTER) if (w >= r.unlock) total += r.weight;
+    let x = Math.random() * total;
+    for (const r of ENEMY_ROSTER) {
+      if (w < r.unlock) continue;
+      x -= r.weight;
+      if (x <= 0) return r.type;
+    }
+    return 'drone';
+  }
+
+  function buildEnemy(type, hpMult, speedMult, x, y) {
+    const def = ENEMY_DEFS[type];
+    return {
+      type, x, y, r: def.r,
+      hp: def.hp * hpMult, maxhp: def.hp * hpMult,
+      speed: def.speed * speedMult,
+      pts: def.pts, dmg: def.dmg, color: def.color,
+      carrier: !!def.carrier, armor: def.armor || 0, weave: def.weave || 0,
+      splits: def.splits || 0, child: def.child || null,
+      hpMult, speedMult, phase: Math.random() * 6.28,
+    };
+  }
+
   function spawnEnemy(spec) {
-    const def = ENEMY_DEFS[spec.type];
     // spawn from top band or upper sides
     let x, y;
     const edge = Math.random();
     if (edge < 0.7) { x = 14 + Math.random() * (W - 28); y = -14; }
     else if (edge < 0.85) { x = -14; y = Math.random() * (H * 0.4); }
     else { x = W + 14; y = Math.random() * (H * 0.4); }
-    game.enemies.push({
-      type: spec.type, x, y,
-      r: def.r,
-      hp: def.hp * spec.hpMult, maxhp: def.hp * spec.hpMult,
-      speed: def.speed * spec.speedMult,
-      pts: def.pts, dmg: def.dmg,
-      color: def.color, carrier: !!def.carrier,
-      phase: Math.random() * 6.28,
-    });
+    game.enemies.push(buildEnemy(spec.type, spec.hpMult, spec.speedMult, x, y));
   }
 
   // ───────────────────────── Update ─────────────────────────
@@ -768,9 +798,14 @@
       const dx = g.bx - e.x, dy = g.by - e.y;
       const d = Math.hypot(dx, dy) || 1;
       const sp = e.speed * p.slow;
-      e.vx = (dx/d) * sp; e.vy = (dy/d) * sp; // remembered so debris can inherit momentum
-      e.x += e.vx * dt;
-      e.y += e.vy * dt;
+      let vx = (dx/d) * sp, vy = (dy/d) * sp;
+      if (e.weave) { // weavers strafe side-to-side as they approach
+        const wob = Math.sin(g.t * 3 + e.phase) * e.weave * p.slow;
+        vx += (-dy/d) * wob; vy += (dx/d) * wob;
+      }
+      e.vx = vx; e.vy = vy; // remembered so debris can inherit momentum
+      e.x += vx * dt;
+      e.y += vy * dt;
       e.phase += dt * 3;
       // reached base?
       if (d < 30 + e.r) {
@@ -817,10 +852,9 @@
           if (Math.hypot(e.x-pr.x, e.y-pr.y) < e.r + pr.r) {
             if (pr.splash) { explode(pr.x, pr.y, pr.splash, pr.dmg); pr.dead = true; break; }
             const crit = Math.random() < p.critChance;
-            e.hp -= pr.dmg * (crit ? 3 : 1);
             pr.hit.add(e);
             spawnBurst(pr.x, pr.y, crit ? '#FC3D21' : '#0B3D91', crit ? 5 : 2);
-            if (e.hp <= 0) killEnemy(e);
+            damageEnemy(e, pr.dmg * (crit ? 3 : 1));
             if (pr.pierce-- <= 0) { pr.dead = true; break; }
           }
         }
@@ -964,8 +998,7 @@
     for (const e of g.enemies) {
       if (e.dead) continue;
       if (Math.hypot(e.x - x, e.y - y) <= radius + e.r) {
-        e.hp -= dmg;
-        if (e.hp <= 0) killEnemy(e);
+        damageEnemy(e, dmg);
       }
     }
   }
@@ -1053,10 +1086,9 @@
         }
         if (!tgt || bd > 260) break;
         hit.add(tgt);
-        tgt.hp -= dmg;
         spawnBurst(tgt.x, tgt.y, '#37A6E6', 3);
         g.beams.push({ x1: from.x, y1: from.y, x2: tgt.x, y2: tgt.y, w: 2, life: 0.12, life0: 0.12, color: '#37A6E6' });
-        if (tgt.hp <= 0) killEnemy(tgt);
+        damageEnemy(tgt, dmg);
         from = { x: tgt.x, y: tgt.y };
       }
     }
@@ -1085,9 +1117,8 @@
         const px = ox + dx*t, py = oy + dy*t;
         if (Math.hypot(en.x - px, en.y - py) <= en.r + halfW) {
           const crit = Math.random() < p.critChance;
-          en.hp -= dmg * (crit ? 3 : 1);
           spawnBurst(px, py, crit ? '#FC3D21' : cfg.tip, 2);
-          if (en.hp <= 0) killEnemy(en);
+          damageEnemy(en, dmg * (crit ? 3 : 1));
         }
       }
       g.beams.push({ x1: ox, y1: oy, x2: ox + dx*reach, y2: oy + dy*reach,
@@ -1107,6 +1138,13 @@
     }
   }
 
+  // Apply damage to an enemy (armored types take reduced damage) and handle its death.
+  function damageEnemy(e, dmg) {
+    if (e.dead) return;
+    e.hp -= e.armor ? dmg * (1 - e.armor) : dmg;
+    if (e.hp <= 0) killEnemy(e);
+  }
+
   function killEnemy(e) {
     if (e.dead) return;
     e.dead = true;
@@ -1117,6 +1155,16 @@
     spawnBurst(e.x, e.y, e.color, 4); // quick flash
     spawnDebris(e);                   // momentum-carrying debris
     if (e.carrier) grantCore(e.x, e.y);
+    if (e.splits) spawnChildren(e);   // splitters burst into smaller enemies
+  }
+
+  function spawnChildren(e) {
+    for (let i = 0; i < e.splits; i++) {
+      const a = Math.random() * 6.28;
+      const c = buildEnemy(e.child || 'swarm', e.hpMult, e.speedMult, e.x + Math.cos(a)*e.r, e.y + Math.sin(a)*e.r);
+      c.vx = Math.cos(a) * 60; c.vy = Math.sin(a) * 60; // little outward pop
+      game.enemies.push(c);
+    }
   }
 
   // Destroying a carrier banks its salvage immediately — no falling/collecting, so it
@@ -1301,6 +1349,35 @@
     } else if (e.type === 'swarm') {
       ctx.fillStyle = e.color;
       ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r,e.r); ctx.lineTo(-e.r,e.r); ctx.closePath(); ctx.fill();
+    } else if (e.type === 'sprinter') { // teal dart
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.moveTo(0, e.r*1.2); ctx.lineTo(e.r*0.75, -e.r*0.7); ctx.lineTo(0, -e.r*0.3); ctx.lineTo(-e.r*0.75, -e.r*0.7); ctx.closePath(); ctx.fill();
+    } else if (e.type === 'brute') { // big hexagon
+      ctx.fillStyle = e.color; ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i=0;i<6;i++){ const a=Math.PI/6 + i*Math.PI/3, fx=Math.cos(a)*e.r, fy=Math.sin(a)*e.r; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(10,14,20,0.4)';
+      ctx.beginPath(); ctx.moveTo(-e.r*0.5,0); ctx.lineTo(e.r*0.5,0); ctx.stroke();
+    } else if (e.type === 'splitter') { // purple cell that divides
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.fill();
+      ctx.strokeStyle='rgba(10,14,20,0.5)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(0,e.r); ctx.moveTo(-e.r,0); ctx.lineTo(e.r,0); ctx.stroke();
+    } else if (e.type === 'weaver') { // gold 4-point star
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      for (let i=0;i<8;i++){ const a=i*Math.PI/4, rr=(i%2===0)?e.r:e.r*0.4, fx=Math.cos(a)*rr, fy=Math.sin(a)*rr; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
+      ctx.closePath(); ctx.fill();
+    } else if (e.type === 'armored') { // steel octagon with an armour ring
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      for (let i=0;i<8;i++){ const a=Math.PI/8 + i*Math.PI/4, fx=Math.cos(a)*e.r, fy=Math.sin(a)*e.r; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='rgba(127,168,224,0.7)'; ctx.lineWidth=2.5;
+      ctx.beginPath();
+      for (let i=0;i<8;i++){ const a=Math.PI/8 + i*Math.PI/4, fx=Math.cos(a)*(e.r+1.5), fy=Math.sin(a)*(e.r+1.5); i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
+      ctx.closePath(); ctx.stroke();
     } else { // drone — diamond
       ctx.fillStyle = e.color;
       ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
@@ -1309,7 +1386,7 @@
     }
     ctx.restore();
     // hp bar for tougher enemies
-    if (hpFrac < 1 && (e.type === 'hulk' || e.type === 'carrier')) {
+    if (hpFrac < 1 && e.r >= 13) {
       ctx.fillStyle = 'rgba(11,61,145,0.18)';
       ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2, 3);
       ctx.fillStyle = e.type === 'carrier' ? '#C98A00' : '#FC3D21';
