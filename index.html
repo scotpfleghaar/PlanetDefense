@@ -555,6 +555,15 @@
       apply:p=>refitTurret(p, 'railgun') },
     { name:'Flak Cannon', tag:'Weapon', desc:'Refit a turret to a short-range scatter of pellets. Great vs swarms.',
       apply:p=>refitTurret(p, 'flak') },
+    // rare one-off building cards — each adds a structure somewhere on the ground
+    { name:'Missile Silo', tag:'Building', rare:true, desc:'Build a silo on the ground that launches swerving homing missiles at any enemy, any distance.',
+      apply:p=>addBuilding('silo') },
+    { name:'Arc Tower', tag:'Building', rare:true, desc:'Build a tower that arcs chain-lightning between nearby enemies.',
+      apply:p=>addBuilding('arc') },
+    { name:'Mortar Battery', tag:'Building', rare:true, desc:'Build a mortar that lobs heavy explosive shells at the closest threat.',
+      apply:p=>addBuilding('mortar') },
+    { name:'Repair Bay', tag:'Building', rare:true, desc:'Build a bay that slowly repairs base integrity over time.',
+      apply:p=>addBuilding('repair') },
   ];
 
   // ───────────────────────── Weapon types (per-turret) ─────────────────────────
@@ -647,7 +656,7 @@
       score: 0, kills: 0, coresCollected: 0, salvageRun: 0,
       wave: 0,
       spawnQueue: [], spawnTimer: 0, betweenWaves: 1.0,
-      turretTimers: [], beams: [],
+      turretTimers: [], beams: [], buildings: [],
       research: 0, researchNeed: 120, pendingPicks: 0,
       flashBase: 0, shake: 0, shieldCooldown: 0, shieldFlash: 0,
       diag: Math.hypot(W, H),
@@ -664,19 +673,26 @@
   }
 
   // ───────────────────────── Waves & spawning ─────────────────────────
+  // Wave scaling — all unbounded, so difficulty/enemy counts grow forever. Tune here.
+  const WAVE = {
+    baseCount: 5,          // enemies in wave 1
+    countLinear: 2,        // + this many enemies per wave
+    countQuad: 0.15,       // + this many per wave² (accelerating, uncapped swarms)
+    hpPerWave: 0.16,       // enemy HP scaling per wave
+    speedPerWave: 0.035,   // enemy speed scaling per wave
+    spawnGapStart: 0.95,   // seconds between spawns at wave 1
+    spawnGapPerWave: 0.05, // spawns get this much faster each wave
+    spawnGapMin: 0.06,     // floor (just to avoid spawning many per frame)
+  };
+
   function nextWave() {
     game.wave++;
     save.deepestWave = Math.max(save.deepestWave, game.wave);
     const w = game.wave;
-    // TODO: All these magic numbers in nextwave need constants so the game can be tuned.
-    const multipliers = {
-      countMultiplier: 1.8,
-      hpMultiplier: 0.16,
-      speedMultiplier: 0.035
-    }
-    const count = 5 + Math.floor(w * multipliers.countMultiplier);
-    const hpMult = 1 + (w-1) * multipliers.hpMultiplier;
-    const speedMult = 1 + (w-1) * multipliers.speedMultiplier;
+    // count grows without bound as waves progress (linear + accelerating term)
+    const count = WAVE.baseCount + Math.floor(w * WAVE.countLinear + w * w * WAVE.countQuad);
+    const hpMult = 1 + (w-1) * WAVE.hpPerWave;
+    const speedMult = 1 + (w-1) * WAVE.speedPerWave;
     const q = [];
     for (let i = 0; i < count; i++) {
       let type = 'drone';
@@ -740,7 +756,7 @@
       g.spawnTimer -= dt;
       if (g.spawnTimer <= 0) {
         spawnEnemy(g.spawnQueue.shift());
-        g.spawnTimer = Math.max(0.25, 0.95 - g.wave * 0.03);
+        g.spawnTimer = Math.max(WAVE.spawnGapMin, WAVE.spawnGapStart - g.wave * WAVE.spawnGapPerWave);
       }
     } else if (g.enemies.length === 0) {
       g.betweenWaves -= dt;
@@ -784,19 +800,22 @@
       g.turretTimers[i] = p.fireInterval * w.fireMult;
     }
 
+    // ground buildings act on their own cadence
+    updateBuildings(dt);
+
     // projectiles
     for (const pr of g.projectiles) {
       if (pr.missile) steerMissile(pr, dt); // homing
       pr.x += pr.vx * dt; pr.y += pr.vy * dt;
       pr.life -= dt;
       if (pr.x < -30 || pr.x > W+30 || pr.y < -30 || pr.y > H+30 || pr.life <= 0) {
-        if (pr.missile && pr.life <= 0) explode(pr.x, pr.y, pr.splash, pr.dmg);
+        if (pr.splash && pr.life <= 0) explode(pr.x, pr.y, pr.splash, pr.dmg);
         pr.dead = true;
       } else {
         for (const e of g.enemies) {
           if (e.dead || pr.hit.has(e)) continue;
           if (Math.hypot(e.x-pr.x, e.y-pr.y) < e.r + pr.r) {
-            if (pr.missile) { explode(pr.x, pr.y, pr.splash, pr.dmg); pr.dead = true; break; }
+            if (pr.splash) { explode(pr.x, pr.y, pr.splash, pr.dmg); pr.dead = true; break; }
             const crit = Math.random() < p.critChance;
             e.hp -= pr.dmg * (crit ? 3 : 1);
             pr.hit.add(e);
@@ -930,7 +949,9 @@
     let da = want - cur;
     while (da > Math.PI) da -= 2*Math.PI;
     while (da < -Math.PI) da += 2*Math.PI;
-    const na = cur + Math.max(-5*dt, Math.min(5*dt, da)); // limited turn rate
+    const turn = pr.turn || 5;
+    let na = cur + Math.max(-turn*dt, Math.min(turn*dt, da)); // limited turn rate
+    if (pr.wobble) na += Math.sin(game.t * 7 + (pr.wphase || 0)) * pr.wobble; // swervy flight
     const sp = Math.hypot(pr.vx, pr.vy);
     pr.vx = Math.cos(na) * sp; pr.vy = Math.sin(na) * sp;
   }
@@ -945,6 +966,98 @@
       if (Math.hypot(e.x - x, e.y - y) <= radius + e.r) {
         e.hp -= dmg;
         if (e.hp <= 0) killEnemy(e);
+      }
+    }
+  }
+
+  // ───────────────────────── Ground buildings ─────────────────────────
+  // Independent structures placed anywhere along the ground, each acting on its own
+  // cadence regardless of turret range. Added (rarely) via one-off building cards.
+  const BUILDINGS = {
+    silo:   { name:'Missile Silo',   interval:2.4, accent:'#FC3D21' },
+    arc:    { name:'Arc Tower',      interval:1.5, accent:'#37A6E6' },
+    mortar: { name:'Mortar Battery', interval:3.2, accent:'#C98A00' },
+    repair: { name:'Repair Bay',     accent:'#1E7F4F' }, // passive, no interval
+  };
+
+  function randomEnemy() {
+    const es = game.enemies;
+    return es.length ? es[Math.floor(Math.random() * es.length)] : null;
+  }
+  function mostAdvancedEnemy() { // closest to the base = most dangerous
+    let best = null, bd = Infinity;
+    for (const e of game.enemies) {
+      const d = Math.hypot(e.x - game.bx, e.y - game.by);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  // Place a building somewhere on the ground, clear of the base footprint.
+  function addBuilding(type) {
+    const g = game;
+    let x = g.bx;
+    for (let tries = 0; tries < 12; tries++) {
+      x = 26 + Math.random() * (W - 52);
+      if (Math.abs(x - g.bx) > 64) break;
+    }
+    g.buildings.push({ type, x, y: groundYAt(x) - 1, timer: 0.6 + Math.random() * 1.2, flash: 0, glow: 0 });
+  }
+
+  function updateBuildings(dt) {
+    const g = game, p = g.p;
+    for (const b of g.buildings) {
+      if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 3);
+      if (b.type === 'repair') {                 // passive integrity regen
+        if (p.baseHP < p.baseMax) { p.baseHP = Math.min(p.baseMax, p.baseHP + 5 * dt); b.glow = 1; }
+        else b.glow = Math.max(0, (b.glow || 0) - dt * 2);
+        continue;
+      }
+      if (!g.enemies.length) continue;
+      b.timer -= dt;
+      if (b.timer <= 0) {
+        b.timer = BUILDINGS[b.type].interval;
+        fireBuilding(b);
+        b.flash = 1;
+      }
+    }
+  }
+
+  function fireBuilding(b) {
+    const g = game, p = g.p;
+    const ox = b.x, oy = b.y - 8;
+    if (b.type === 'silo') {
+      const tgt = randomEnemy(); if (!tgt) return;
+      const a = -Math.PI/2 + (Math.random() - 0.5) * 1.7; // launch up-ish with spread
+      const sp = 210;
+      g.projectiles.push({ x: ox, y: oy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+        r: 4, dmg: p.damage * 3, pierce: 0, life: 5, hit: new Set(),
+        missile: true, target: tgt, splash: 44, turn: 3.2, wobble: 0.22, wphase: Math.random()*6.28 });
+
+    } else if (b.type === 'mortar') {
+      const tgt = mostAdvancedEnemy(); if (!tgt) return;
+      const a = Math.atan2(tgt.y - oy, tgt.x - ox), sp = 300;
+      g.projectiles.push({ x: ox, y: oy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+        r: 4.5, dmg: p.damage * 2.5, pierce: 0, life: 3, hit: new Set(), splash: 66 });
+
+    } else if (b.type === 'arc') {
+      let from = { x: ox, y: oy };
+      const hit = new Set();
+      const dmg = p.damage * 1.6;
+      for (let chain = 0; chain < 3; chain++) {       // zap nearest, then chain
+        let tgt = null, bd = Infinity;
+        for (const e of g.enemies) {
+          if (e.dead || hit.has(e)) continue;
+          const d = Math.hypot(e.x - from.x, e.y - from.y);
+          if (d < bd) { bd = d; tgt = e; }
+        }
+        if (!tgt || bd > 260) break;
+        hit.add(tgt);
+        tgt.hp -= dmg;
+        spawnBurst(tgt.x, tgt.y, '#37A6E6', 3);
+        g.beams.push({ x1: from.x, y1: from.y, x2: tgt.x, y2: tgt.y, w: 2, life: 0.12, life0: 0.12, color: '#37A6E6' });
+        if (tgt.hp <= 0) killEnemy(tgt);
+        from = { x: tgt.x, y: tgt.y };
       }
     }
   }
@@ -1134,8 +1247,9 @@
     }
     ctx.globalAlpha = 1;
 
-    // rocky hill silhouette, then the base planted on it
+    // rocky hill silhouette, ground buildings on it, then the base
     drawHill();
+    for (const b of g.buildings) drawBuilding(b);
     drawBase(g.bx, g.by, p.baseHP / p.baseMax, g.flashBase);
 
     ctx.restore();
@@ -1250,6 +1364,43 @@
     ridgePath(g.hillBack); ctx.fill();
     ctx.fillStyle = '#0A0E14';               // near hill silhouette
     ridgePath(g.hill); ctx.fill();
+  }
+
+  // Ground buildings — solid black silhouettes; only the glowing top accent distinguishes them.
+  function drawBuilding(b) {
+    const body = '#0A0E14';
+    const lit = b.type === 'repair' ? (b.glow || 0) : b.flash; // accent brightness
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.fillStyle = body;
+
+    if (b.type === 'silo') {                 // bunker with a launch hatch
+      ctx.beginPath(); ctx.moveTo(-9, 2); ctx.lineTo(-6, -9); ctx.lineTo(6, -9); ctx.lineTo(9, 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = `rgba(252,61,33,${0.45 + lit * 0.55})`;
+      ctx.beginPath(); ctx.ellipse(0, -9, 5, 2.2, 0, 0, 6.2832); ctx.fill();
+
+    } else if (b.type === 'arc') {           // slim tower with a crackling coil orb
+      ctx.fillRect(-4, -12, 8, 14);
+      ctx.shadowColor = '#37A6E6'; ctx.shadowBlur = 6 + lit * 12;
+      ctx.fillStyle = `rgba(55,166,230,${0.6 + lit * 0.4})`;
+      ctx.beginPath(); ctx.arc(0, -14, 3.4, 0, 6.2832); ctx.fill();
+      ctx.shadowBlur = 0;
+
+    } else if (b.type === 'mortar') {        // squat block with an angled tube
+      ctx.fillRect(-8, -6, 16, 8);
+      ctx.save(); ctx.rotate(-0.5);
+      ctx.fillStyle = body; ctx.fillRect(-2.6, -16, 5.2, 13); // black tube
+      ctx.fillStyle = `rgba(201,138,0,${0.6 + lit * 0.4})`;
+      ctx.beginPath(); ctx.arc(0, -16, 2.4, 0, 6.2832); ctx.fill(); // glowing muzzle
+      ctx.restore();
+
+    } else if (b.type === 'repair') {        // dome with a pulsing green cross
+      ctx.beginPath(); ctx.arc(0, 0, 9, Math.PI, 0); ctx.fill();
+      ctx.fillRect(-9, 0, 18, 3);
+      ctx.fillStyle = `rgba(30,127,79,${0.55 + lit * 0.45})`;
+      ctx.fillRect(-1.4, -7, 2.8, 8); ctx.fillRect(-4, -4.5, 8, 2.8);
+    }
+    ctx.restore();
   }
 
   // Layout for the turret units. Up to ten sit adjacently across the platform; beyond
@@ -1480,8 +1631,12 @@
   function pick3() {
     const pool = UPGRADES.slice();
     const out = [];
-    for (let i = 0; i < 3 && pool.length; i++) {
-      out.push(pool.splice(Math.floor(Math.random()*pool.length), 1)[0]);
+    const wt = c => (c.rare ? 0.18 : 1); // rare cards (buildings) appear far less often
+    for (let n = 0; n < 3 && pool.length; n++) {
+      let total = 0; for (const c of pool) total += wt(c);
+      let r = Math.random() * total, idx = 0;
+      for (let i = 0; i < pool.length; i++) { r -= wt(pool[i]); if (r <= 0) { idx = i; break; } }
+      out.push(pool.splice(idx, 1)[0]);
     }
     return out;
   }

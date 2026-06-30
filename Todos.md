@@ -1,4 +1,3 @@
-// Added a toggle to randomly select a card with a random effect
 // could be interesting to have clouds that has particle effects that the targets fly through as the clouds move accross the screen with there being a chance each round for a storm that rains and debuffs range and makes enemies move slower. and lighting that randomely strikes an enemie
-// need rare cards that add buildings to the base like a missle silo that randomly shots swarvy missles that lock on from any distance. this can live anywhere on the ground level. We should have other cards with other buildings too. 
 // We should have more enemie variety and add a new enemie type every 3 waves
+// Extremely rare cards that are insane - reset research buff, reset enemey speed - reset other buffs.
