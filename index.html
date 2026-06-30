@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Planet Defense</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Expanded:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:     #F3F5F8;
+      --panel:     #FFFFFF;
+      --ink:       #0A0E14;
+      --blue:      #0B3D91;
+      --blue-soft: rgba(11,61,145,0.12);
+      --vermilion: #FC3D21;
+      --steel:     #5B6471;
+      --line:      rgba(11,61,145,0.16);
+      --grid:      rgba(11,61,145,0.05);
+      --grid-dark: rgba(127,168,224,0.06);
+      --green:     #1E7F4F;
+      --gold:      #C98A00;
+
+      --display: "Archivo Expanded", system-ui, sans-serif;
+      --body:    "Archivo", system-ui, sans-serif;
+      --mono:    "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+    body {
+      font-family: var(--body);
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 32px 32px;
+      color: var(--ink);
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    /* ── Telemetry vocabulary ── */
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--steel);
+    }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+    .screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 1.5rem 1.25rem;
+    }
+    .screen.active { display: flex; }
+
+    .stack { width: 100%; max-width: 24rem; }
+
+    /* corner-ticked instrument panel */
+    .panel {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 1.5rem 1.25rem;
+    }
+    .panel::before, .panel::after,
+    .panel > .tick-tl, .panel > .tick-br {
+      content: "";
+      position: absolute;
+      width: 9px; height: 9px;
+      border: 2px solid var(--blue);
+    }
+    .panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+    .panel::after  { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+    .panel .tick-tl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+    .panel .tick-br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+    /* ── Title ── */
+    #title .head { text-align: center; margin-bottom: 2rem; }
+    #title .id-line {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.5rem; margin-bottom: 1rem;
+    }
+    #title .id-line .dash { width: 28px; height: 1px; background: var(--line); }
+    #title h1 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 2.4rem;
+      line-height: 1.0;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-bottom: 0.7rem;
+    }
+    #title h1 .accent { color: var(--blue); }
+    #title .sub { color: var(--steel); font-size: 0.95rem; line-height: 1.5; }
+
+    .stats-strip {
+      display: grid; grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line); background: var(--panel);
+      margin-bottom: 1.25rem;
+    }
+    .stats-strip .ss { padding: 0.7rem 0.9rem; }
+    .stats-strip .ss:nth-child(odd) { border-right: 1px solid var(--line); }
+    .stats-strip .ss:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .stats-strip .ss .k { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--steel); }
+    .stats-strip .ss .v { font-family: var(--mono); font-size: 1.3rem; font-weight: 600; margin-top: 0.1rem; }
+    .stats-strip .ss.salvage .v { color: var(--gold); }
+    .stats-strip .ss.best .v { color: var(--blue); }
+
+    .btn {
+      width: 100%;
+      padding: 0.95rem;
+      border: none;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }
+    .btn-primary  { background: var(--blue); }
+    .btn-primary:hover { background: #0d49ad; }
+    .btn-primary:disabled { background: #C3CAD4; cursor: not-allowed; }
+    .btn-alert  { background: var(--vermilion); }
+    .btn-alert:hover { background: #e23416; }
+    .btn-quiet  { background: #20262F; }
+    .btn-quiet:hover { background: #2b333e; }
+    .btn-go  { background: var(--green); }
+    .btn-go:hover { background: #1a6e44; }
+    .btn-gold { background: var(--gold); }
+    .btn-gold:hover { background: #b07a00; }
+    .btn + .btn { margin-top: 0.6rem; }
+
+    .btn-ghost {
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--steel);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 0.7rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      margin-top: 0.6rem;
+    }
+    .btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
+    .btn-ghost:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }
+
+    /* ── Game (fullscreen) ── */
+    #game { padding: 0; }
+    #game.active { display: block; }
+
+    #cv {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100dvh; z-index: 0; display: block;
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        var(--paper);
+      background-size: 32px 32px, 32px 32px, 100% 100%;
+    }
+
+    /* floating corner instrument readouts */
+    .hud { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+
+    .readout {
+      position: absolute; pointer-events: auto;
+      background: rgba(243,245,248,0.90);
+      border: 1px solid var(--line);
+      padding: 0.5rem 0.75rem;
+      -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    }
+    .readout::after {
+      content: ""; position: absolute; width: 8px; height: 8px; border: 2px solid var(--vermilion);
+    }
+    .readout .k { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--steel); }
+    .readout .v { font-family: var(--mono); font-weight: 600; line-height: 1; margin-top: 0.18rem; }
+    .readout .v.big { font-size: 1.7rem; letter-spacing: -0.01em; }
+    .readout .v.gold { color: var(--gold); }
+    .readout .sub { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.08em; color: var(--steel); margin-top: 0.3rem; }
+    .readout .sub b { color: var(--blue); font-weight: 600; }
+
+    .r-tl { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); }
+    .r-tl::after { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+    .r-tr { top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); text-align: right; }
+    .r-tr::after { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+    .r-bl { bottom: calc(12px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); }
+    .r-bl::after { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+    .r-br { bottom: calc(12px + env(safe-area-inset-bottom)); right: calc(12px + env(safe-area-inset-right)); }
+    .r-br::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+    .meterbox { width: 9.75rem; }
+    .meter-head { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); margin-bottom: 0.32rem; }
+    .meter { position: relative; height: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.55); overflow: hidden; }
+    .meter .bar { position: absolute; inset: 0 auto 0 0; width: 0%; transition: width 0.12s linear; }
+    .meter.integrity .bar { background: var(--vermilion); }
+    .meter.research .bar { background: var(--blue); }
+    .meter.shield .bar { background: #37A6E6; }
+    .meterbox .meter + .meter-head { margin-top: 0.4rem; }
+
+    .hud-btn {
+      pointer-events: auto; margin-top: 0.55rem; width: 100%;
+      background: var(--vermilion); color: #fff; border: none;
+      font-family: var(--mono); font-size: 0.6875rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase; padding: 0.45rem; cursor: pointer;
+      transition: background 0.12s, transform 0.05s;
+    }
+    .hud-btn:hover { background: #e23416; }
+    .hud-btn:active { transform: translateY(1px); }
+
+    .wave-banner {
+      position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+      font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.24em;
+      text-transform: uppercase; color: #fff; z-index: 3;
+      background: rgba(11,61,145,0.82); padding: 0.4rem 0.95rem; pointer-events: none;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .wave-banner.show { opacity: 1; }
+
+    /* paused overlay */
+    .pause-overlay {
+      display: none; position: fixed; inset: 0; z-index: 50;
+      background: rgba(10,14,20,0.55);
+      align-items: center; justify-content: center; padding: 1.5rem;
+    }
+    .pause-overlay.open { display: flex; }
+    .pause-card { width: 100%; max-width: 18rem; padding: 1.75rem 1.5rem; text-align: center; }
+    .pause-card .p-title { font-family: var(--display); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; font-size: 1.5rem; margin-bottom: 1.4rem; }
+
+    /* ── Upgrade modal ── */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(10,14,20,0.6);
+      z-index: 100; align-items: center; justify-content: center; padding: 1.25rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel); border: 1px solid var(--line);
+      width: 100%; max-width: 26rem; max-height: 90dvh;
+      display: flex; flex-direction: column;
+      animation: sheetUp 0.18s ease-out;
+    }
+    @keyframes sheetUp { from { transform: translateY(14px); opacity: 0.5; } to { transform: translateY(0); opacity: 1; } }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); flex-shrink: 0;
+    }
+    .modal-header h2 { font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 1rem; letter-spacing: 0.05em; }
+    .modal-header .eyebrow { color: var(--blue); }
+    .modal-body { overflow-y: auto; padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .card {
+      width: 100%; text-align: left; cursor: pointer;
+      border: 1px solid var(--line); border-left: 3px solid var(--blue);
+      background: var(--panel); padding: 0.85rem 1rem;
+      transition: border-color 0.12s, background 0.12s, transform 0.05s;
+      display: flex; flex-direction: column; gap: 0.25rem;
+    }
+    .card:hover { background: var(--blue-soft); border-left-color: var(--vermilion); }
+    .card:active { transform: translateY(1px); }
+    .card:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }
+    .card .c-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+    .card .c-name { font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.04em; }
+    .card .c-tag { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vermilion); }
+    .card .c-desc { font-family: var(--mono); font-size: 0.75rem; color: var(--steel); line-height: 1.45; }
+
+    /* meta shop cards */
+    .shop-card {
+      border: 1px solid var(--line); padding: 0.85rem 1rem;
+      display: flex; flex-direction: column; gap: 0.55rem;
+    }
+    .shop-card .s-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+    .shop-card .s-name { font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.04em; }
+    .shop-card .s-lvl { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.1em; color: var(--blue); }
+    .shop-card .s-desc { font-family: var(--mono); font-size: 0.72rem; color: var(--steel); line-height: 1.4; }
+    .pips { display: flex; gap: 4px; }
+    .pip { width: 14px; height: 6px; border: 1px solid var(--line); background: var(--paper); }
+    .pip.on { background: var(--blue); border-color: var(--blue); }
+    .shop-buy {
+      align-self: flex-start; padding: 0.45rem 0.9rem; border: none; cursor: pointer;
+      font-family: var(--mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #fff; background: var(--gold);
+      transition: background 0.12s;
+    }
+    .shop-buy:hover { background: #b07a00; }
+    .shop-buy:disabled { background: #C3CAD4; cursor: not-allowed; color: #fff; }
+    .shop-buy.maxed { background: var(--green); }
+
+    /* ── Report ── */
+    #report .head { text-align: center; margin-bottom: 1.25rem; }
+    #report h1 {
+      font-family: var(--display); font-weight: 800; text-transform: uppercase;
+      font-size: 1.7rem; letter-spacing: 0.04em; margin-bottom: 0.3rem;
+    }
+    #report h1.destroyed { color: var(--vermilion); }
+    #report .r-date { font-family: var(--mono); font-size: 0.8rem; color: var(--steel); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; }
+    .stat-cell { padding: 0.9rem 0.75rem; border-top: 1px solid var(--line); }
+    .stat-cell:nth-child(odd) { border-right: 1px solid var(--line); }
+    .stat-cell .val { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; }
+    .stat-cell .lbl { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); margin-top: 0.2rem; }
+    .stat-cell.hl .val { color: var(--blue); }
+    .stat-cell.salvage .val { color: var(--gold); }
+    .salvage-banner {
+      border: 1px solid var(--gold); border-left: 3px solid var(--gold);
+      background: var(--panel); padding: 0.8rem 1rem; margin: 1rem 0;
+      font-family: var(--mono); font-size: 0.8rem; color: var(--steel);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .salvage-banner b { color: var(--gold); font-weight: 600; font-size: 1.1rem; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .wave-banner, .card, .modal { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Title / Mission briefing ── -->
+  <div id="title" class="screen active">
+    <div class="stack">
+      <div class="head">
+        <div class="id-line">
+          <span class="dash"></span>
+          <span class="eyebrow">Orbital defense protocol</span>
+          <span class="dash"></span>
+        </div>
+        <h1>Planet<br><span class="accent">Defense</span></h1>
+        <p class="sub">Your turrets fire themselves.<br>You choose how they evolve.</p>
+      </div>
+
+      <div class="stats-strip">
+        <div class="ss salvage"><div class="k">Banked salvage</div><div class="v mono" id="t-salvage">0</div></div>
+        <div class="ss best"><div class="k">Best score</div><div class="v mono" id="t-best">0</div></div>
+        <div class="ss"><div class="k">Runs</div><div class="v mono" id="t-runs">0</div></div>
+        <div class="ss"><div class="k">Deepest wave</div><div class="v mono" id="t-wave">0</div></div>
+      </div>
+
+      <button id="launch-btn" class="btn btn-primary">Launch run</button>
+      <button id="meta-btn" class="btn btn-gold">Salvage bay</button>
+      <button id="how-btn" class="btn-ghost">How it works</button>
+    </div>
+  </div>
+
+  <!-- ── Game (fullscreen) ── -->
+  <div id="game" class="screen">
+    <canvas id="cv"></canvas>
+
+    <div class="hud">
+      <div class="readout r-tl">
+        <div class="k">Score</div>
+        <div class="v big mono" id="h-score">0</div>
+        <div class="sub mono">WAVE <b id="h-wave">1</b></div>
+      </div>
+
+      <div class="readout r-tr">
+        <div class="k">Salvage +</div>
+        <div class="v big mono gold" id="h-salvage">0</div>
+        <div class="sub mono"><b id="h-cores">0</b> CORES</div>
+      </div>
+
+      <div class="readout r-bl meterbox">
+        <div id="shield-row" class="meter-head" style="display:none"><span>Shield</span><span id="m-shd-pct">100%</span></div>
+        <div id="shield-meter" class="meter shield" style="display:none"><div class="bar" id="m-shd-bar" style="width:100%"></div></div>
+        <div class="meter-head"><span>Integrity</span><span id="m-int-pct">100%</span></div>
+        <div class="meter integrity"><div class="bar" id="m-int-bar" style="width:100%"></div></div>
+      </div>
+
+      <div class="readout r-br meterbox">
+        <div class="meter-head"><span>Research</span><span id="m-res-pct">0%</span></div>
+        <div class="meter research"><div class="bar" id="m-res-bar"></div></div>
+        <button id="pause-btn" class="hud-btn">Pause</button>
+      </div>
+    </div>
+
+    <div class="wave-banner" id="wave-banner">Wave 1</div>
+
+    <div class="pause-overlay" id="pause-overlay">
+      <div class="panel pause-card">
+        <span class="tick-tl"></span><span class="tick-br"></span>
+        <div class="p-title">Paused</div>
+        <button id="resume-btn" class="btn btn-go">Resume</button>
+        <button id="abort-btn" class="btn btn-quiet">Abort run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Upgrade pick modal ── -->
+  <div id="upgrade-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Choose an upgrade">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Research unlocked</h2>
+        <span class="eyebrow" id="upg-count">PICK 1</span>
+      </div>
+      <div class="modal-body" id="upgrade-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Salvage bay (meta shop) ── -->
+  <div id="meta-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Salvage bay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Salvage Bay</h2>
+        <span class="eyebrow" id="meta-balance">0 SALVAGE</span>
+      </div>
+      <div class="modal-body" id="meta-body"></div>
+      <div style="padding:0 1.25rem 1.25rem;">
+        <button id="meta-close" class="btn btn-quiet">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── How it works ── -->
+  <div id="how-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="How it works">
+    <div class="modal">
+      <div class="modal-header"><h2>Briefing</h2><span class="eyebrow">DOC-01</span></div>
+      <div class="modal-body" style="font-family:var(--mono); font-size:0.8rem; color:var(--steel); line-height:1.6;">
+        <p><b style="color:var(--ink)">1 — Auto turrets.</b> Your base fires on the nearest threats by itself. You never aim.</p>
+        <p><b style="color:var(--ink)">2 — Research.</b> Destroyed enemies fill the Research bar. Each fill pauses the assault and offers 3 upgrade cards — pick one to shape your run.</p>
+        <p><b style="color:var(--ink)">3 — Carriers.</b> Glowing <span style="color:var(--vermilion)">vermilion</span> carriers drop a Core when destroyed. The Core falls to your base and banks permanent <span style="color:var(--gold)">Salvage</span> — but only if the base survives to collect it.</p>
+        <p><b style="color:var(--ink)">4 — Salvage Bay.</b> Spend banked Salvage between runs on permanent upgrades that carry into every future run.</p>
+        <p><b style="color:var(--ink)">Goal:</b> survive the waves and score as high as you can.</p>
+        <button id="how-close" class="btn btn-primary" style="margin-top:0.5rem;">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Report ── -->
+  <div id="report" class="screen">
+    <div class="stack">
+      <div class="head">
+        <span class="eyebrow">After-action report</span>
+        <h1 id="r-title" style="margin-top:0.5rem">Run complete</h1>
+        <p id="r-date" class="r-date"></p>
+      </div>
+      <div class="panel">
+        <span class="tick-tl"></span><span class="tick-br"></span>
+        <div class="grid2">
+          <div class="stat-cell hl"><p id="r-score" class="val">0</p><p class="lbl">Score</p></div>
+          <div class="stat-cell"><p id="r-wave" class="val">0</p><p class="lbl">Wave reached</p></div>
+          <div class="stat-cell"><p id="r-kills" class="val">0</p><p class="lbl">Destroyed</p></div>
+          <div class="stat-cell"><p id="r-cores" class="val">0</p><p class="lbl">Cores collected</p></div>
+        </div>
+      </div>
+      <div class="salvage-banner">
+        <span>Salvage banked this run</span>
+        <b id="r-salvage">+0</b>
+      </div>
+      <button id="r-meta-btn" class="btn btn-gold">Spend in Salvage Bay</button>
+      <button id="r-again-btn" class="btn btn-primary">Launch again</button>
+      <button id="r-title-btn" class="btn-ghost">Return to title</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ───────────────────────── Persistence ─────────────────────────
+  const STORE = 'planet_defense_v1';
+  const defaultSave = () => ({ salvage: 0, best: 0, runs: 0, deepestWave: 0, meta: {} });
+  function loadSave() {
+    try { return Object.assign(defaultSave(), JSON.parse(localStorage.getItem(STORE)) || {}); }
+    catch { return defaultSave(); }
+  }
+  function persist() { try { localStorage.setItem(STORE, JSON.stringify(save)); } catch {} }
+  let save = loadSave();
+
+  // ───────────────────────── Meta upgrades ─────────────────────────
+  // Permanent upgrades bought with Salvage. effect(level) applied at run start.
+  const META = [
+    { id:'integrity', name:'Reinforced Hull', max:5, cost:l=>40+l*45,
+      desc:l=>`Base integrity +${20*(l)} → +${20*(l+1)}`,
+      apply:(p,l)=>{ p.baseMax += 20*l; } },
+    { id:'firepower', name:'Heavy Munitions', max:5, cost:l=>50+l*55,
+      desc:l=>`Starting damage +${l} → +${l+1}`,
+      apply:(p,l)=>{ p.damage += l; } },
+    { id:'velocity', name:'Servo Tuning', max:4, cost:l=>60+l*70,
+      desc:l=>`Fire rate ${Math.round((1-Math.pow(0.9,l))*100)}% → ${Math.round((1-Math.pow(0.9,l+1))*100)}% faster`,
+      apply:(p,l)=>{ p.fireInterval *= Math.pow(0.9,l); } },
+    { id:'multiplier', name:'Telemetry Uplink', max:5, cost:l=>70+l*65,
+      desc:l=>`Score ×${(1+0.1*l).toFixed(1)} → ×${(1+0.1*(l+1)).toFixed(1)}`,
+      apply:(p,l)=>{ p.scoreMult *= (1+0.1*l); } },
+    { id:'corevalue', name:'Salvage Refinery', max:4, cost:l=>80+l*80,
+      desc:l=>`Salvage per core +${l} → +${l+1}`,
+      apply:(p,l)=>{ p.coreValue += l; } },
+    { id:'vanguard', name:'Twin Vanguard', max:2, cost:l=>140+l*120,
+      desc:l=>`Start with +${l} extra barrel → +${l+1}`,
+      apply:(p,l)=>{ p.multishot += l; } },
+    { id:'beacon', name:'Carrier Beacon', max:3, cost:l=>90+l*70,
+      desc:l=>`Carrier spawn rate +${l*25}% → +${(l+1)*25}%`,
+      apply:(p,l)=>{ p.carrierBoost = 1 + 0.25*l; } },
+    { id:'shield', name:'Aegis Plating', max:4, cost:l=>70+l*70,
+      desc:l=>`Start with +${25*l} → +${25*(l+1)} shield`,
+      apply:(p,l)=>{ p.shieldMax += 25*l; } },
+  ];
+
+  // ───────────────────────── In-run upgrade pool ─────────────────────────
+  const UPGRADES = [
+    { name:'Servo Cadence', tag:'Fire rate', desc:'Turrets cycle 15% faster.',
+      apply:p=>{ p.fireInterval *= 0.85; } },
+    { name:'Heavy Rounds', tag:'Damage', desc:'+2 damage per shot.',
+      apply:p=>{ p.damage += 2; } },
+    { name:'Twin Mount', tag:'Multishot', desc:'+1 simultaneous target per volley.',
+      apply:p=>{ p.multishot += 1; } },
+    { name:'Penetrator', tag:'Pierce', desc:'Rounds pass through +1 enemy.',
+      apply:p=>{ p.pierce += 1; } },
+    { name:'Long Barrel', tag:'Range', desc:'+22% turret range.',
+      apply:p=>{ p.range *= 1.22; } },
+    { name:'Muzzle Velocity', tag:'Projectile', desc:'+35% projectile speed.',
+      apply:p=>{ p.projSpeed *= 1.35; } },
+    { name:'Reinforce Hull', tag:'Integrity', desc:'+35 max integrity and repair to full of that.',
+      apply:p=>{ p.baseMax += 35; p.baseHP = Math.min(p.baseMax, p.baseHP + 35); } },
+    { name:'Field Repair', tag:'Repair', desc:'Restore 40 base integrity now.',
+      apply:p=>{ p.baseHP = Math.min(p.baseMax, p.baseHP + 40); } },
+    { name:'Targeting AI', tag:'Crit', desc:'+12% chance to deal triple damage.',
+      apply:p=>{ p.critChance += 0.12; } },
+    { name:'Graviton Net', tag:'Slow', desc:'Enemies in range move 12% slower (stacks).',
+      apply:p=>{ p.slow *= 0.88; } },
+    { name:'Core Refinery', tag:'Salvage', desc:'+1 salvage banked per core.',
+      apply:p=>{ p.coreValue += 1; } },
+    { name:'Overcharge', tag:'Hybrid', desc:'+1 damage and 8% faster fire.',
+      apply:p=>{ p.damage += 1; p.fireInterval *= 0.92; } },
+    { name:'Deflector Array', tag:'Shield', desc:'+30 shield capacity, recharged now.',
+      apply:p=>{ p.shieldMax += 30; p.shield = Math.min(p.shieldMax, p.shield + 30); } },
+    { name:'Shield Capacitor', tag:'Recharge', desc:'Shield regenerates +6/s faster.',
+      apply:p=>{ p.shieldRegen += 6; } },
+    { name:'Hardened Emitters', tag:'Shield', desc:'Shield recharges 30% sooner after a hit.',
+      apply:p=>{ p.shieldDelay = Math.max(0.8, p.shieldDelay * 0.7); } },
+  ];
+
+  // ───────────────────────── DOM ─────────────────────────
+  const $ = id => document.getElementById(id);
+  const screens = { title:$('title'), game:$('game'), report:$('report') };
+  function show(name){ for(const k in screens) screens[k].classList.toggle('active', k===name); }
+
+  const cv = $('cv');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+
+  // Pre-rendered soft shadow sprite, built once. Drawing a cached blob with
+  // drawImage is dramatically cheaper than a per-frame canvas blur filter.
+  const shadowSprite = (() => {
+    const s = 128, c = document.createElement('canvas');
+    c.width = c.height = s;
+    const sc = c.getContext('2d');
+    const g = sc.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+    g.addColorStop(0,    'rgba(9,12,20,1)');
+    g.addColorStop(0.40, 'rgba(9,12,20,0.5)');
+    g.addColorStop(1,    'rgba(9,12,20,0)');
+    sc.fillStyle = g;
+    sc.beginPath(); sc.arc(s/2, s/2, s/2, 0, 6.2832); sc.fill();
+    return c;
+  })();
+
+  function resizeCanvas() {
+    const r = cv.getBoundingClientRect(); // canvas is sized to the full viewport via CSS
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (game) { game.bx = W/2; game.by = H - 70; game.diag = Math.hypot(W, H); buildHill(); }
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  // ───────────────────────── Game state ─────────────────────────
+  let game = null;
+  let rafId = null, lastT = 0;
+  let runningState = 'idle'; // idle | playing | paused | upgrading | over
+
+  function newPlayer() {
+    const p = {
+      baseMax: 100, baseHP: 100,
+      shieldMax: 30, shield: 30, shieldRegen: 8, shieldDelay: 3.5,
+      damage: 3, fireInterval: 0.55, projSpeed: 360, range: 240,
+      multishot: 1, pierce: 0, critChance: 0,
+      slow: 1,
+      scoreMult: 1, coreValue: 1, carrierBoost: 1,
+    };
+    // apply meta
+    for (const m of META) {
+      const lvl = save.meta[m.id] || 0;
+      if (lvl > 0) m.apply(p, lvl);
+    }
+    p.baseHP = p.baseMax;
+    p.shield = p.shieldMax;
+    return p;
+  }
+
+  function startRun() {
+    show('game');
+    resizeCanvas(); // measure only after the game screen is visible (non-zero size)
+    const p = newPlayer();
+    game = {
+      p,
+      bx: W/2, by: H - 70,
+      enemies: [], projectiles: [], cores: [], particles: [],
+      score: 0, kills: 0, coresCollected: 0, salvageRun: 0,
+      wave: 0,
+      spawnQueue: [], spawnTimer: 0, betweenWaves: 1.0,
+      fireTimer: 0,
+      research: 0, researchNeed: 120, pendingPicks: 0,
+      flashBase: 0, shake: 0, shieldCooldown: 0, shieldFlash: 0,
+      diag: Math.hypot(W, H),
+    };
+    runningState = 'playing';
+    $('h-cores').textContent = '0';
+    $('pause-overlay').classList.remove('open');
+    buildHill();
+    nextWave();
+    lastT = performance.now();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(frame);
+  }
+
+  // ───────────────────────── Waves & spawning ─────────────────────────
+  function nextWave() {
+    game.wave++;
+    save.deepestWave = Math.max(save.deepestWave, game.wave);
+    const w = game.wave;
+    const count = 5 + Math.floor(w * 1.8);
+    const hpMult = 1 + (w-1) * 0.16;
+    const speedMult = 1 + (w-1) * 0.035;
+    const q = [];
+    for (let i = 0; i < count; i++) {
+      let type = 'drone';
+      const roll = Math.random();
+      if (w >= 3 && roll < 0.18) type = 'swarm';
+      else if (w >= 2 && roll < 0.30) type = 'hulk';
+      q.push({ type, hpMult, speedMult });
+    }
+    // carriers: ~1 per wave from wave 2, scaled by beacon meta
+    const carriers = Math.max(0, Math.round((w >= 2 ? 1 : 0) * game.p.carrierBoost) + (w >= 5 ? 1 : 0));
+    for (let i = 0; i < carriers; i++) {
+      const at = Math.floor(Math.random() * q.length);
+      q.splice(at, 0, { type:'carrier', hpMult, speedMult });
+    }
+    game.spawnQueue = q;
+    game.spawnTimer = 0.4;
+    showWaveBanner(w);
+  }
+
+  const wb = $('wave-banner');
+  let wbTimer = null;
+  function showWaveBanner(w) {
+    wb.textContent = 'Wave ' + w;
+    wb.classList.add('show');
+    clearTimeout(wbTimer);
+    wbTimer = setTimeout(() => wb.classList.remove('show'), 1600);
+  }
+
+  const ENEMY_DEFS = {
+    drone:   { hp:3,  r:9,  speed:42, pts:10, dmg:8,  color:'#0B3D91' },
+    swarm:   { hp:1,  r:6,  speed:78, pts:6,  dmg:4,  color:'#1E7F4F' },
+    hulk:    { hp:22, r:19, speed:22, pts:55, dmg:26, color:'#5B6471' },
+    carrier: { hp:10, r:14, speed:30, pts:35, dmg:12, color:'#FC3D21', carrier:true },
+  };
+
+  function spawnEnemy(spec) {
+    const def = ENEMY_DEFS[spec.type];
+    // spawn from top band or upper sides
+    let x, y;
+    const edge = Math.random();
+    if (edge < 0.7) { x = 14 + Math.random() * (W - 28); y = -14; }
+    else if (edge < 0.85) { x = -14; y = Math.random() * (H * 0.4); }
+    else { x = W + 14; y = Math.random() * (H * 0.4); }
+    game.enemies.push({
+      type: spec.type, x, y,
+      r: def.r,
+      hp: def.hp * spec.hpMult, maxhp: def.hp * spec.hpMult,
+      speed: def.speed * spec.speedMult,
+      pts: def.pts, dmg: def.dmg,
+      color: def.color, carrier: !!def.carrier,
+      phase: Math.random() * 6.28,
+    });
+  }
+
+  // ───────────────────────── Update ─────────────────────────
+  function update(dt) {
+    const g = game, p = g.p;
+
+    // spawning
+    if (g.spawnQueue.length > 0) {
+      g.spawnTimer -= dt;
+      if (g.spawnTimer <= 0) {
+        spawnEnemy(g.spawnQueue.shift());
+        g.spawnTimer = Math.max(0.25, 0.95 - g.wave * 0.03);
+      }
+    } else if (g.enemies.length === 0) {
+      g.betweenWaves -= dt;
+      if (g.betweenWaves <= 0) { g.betweenWaves = 1.6; nextWave(); }
+    }
+
+    // enemies move toward base
+    for (const e of g.enemies) {
+      const dx = g.bx - e.x, dy = g.by - e.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const sp = e.speed * p.slow;
+      e.x += (dx/d) * sp * dt;
+      e.y += (dy/d) * sp * dt;
+      e.phase += dt * 3;
+      // reached base?
+      if (d < 30 + e.r) {
+        damageBase(e.dmg);
+        e.dead = true;
+        spawnBurst(e.x, e.y, e.color, 6);
+      }
+    }
+    g.enemies = g.enemies.filter(e => !e.dead);
+
+    // turret firing
+    g.fireTimer -= dt;
+    if (g.fireTimer <= 0 && g.enemies.length > 0) {
+      fireVolley();
+      g.fireTimer = p.fireInterval;
+    }
+
+    // projectiles
+    for (const pr of g.projectiles) {
+      pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+      pr.life -= dt;
+      if (pr.x < -20 || pr.x > W+20 || pr.y < -20 || pr.y > H+20 || pr.life <= 0) pr.dead = true;
+      else {
+        for (const e of g.enemies) {
+          if (e.dead || pr.hit.has(e)) continue;
+          if (Math.hypot(e.x-pr.x, e.y-pr.y) < e.r + pr.r) {
+            const crit = Math.random() < p.critChance;
+            e.hp -= pr.dmg * (crit ? 3 : 1);
+            pr.hit.add(e);
+            spawnBurst(pr.x, pr.y, crit ? '#FC3D21' : '#0B3D91', crit ? 5 : 2);
+            if (e.hp <= 0) killEnemy(e);
+            if (pr.pierce-- <= 0) { pr.dead = true; break; }
+          }
+        }
+      }
+    }
+    g.projectiles = g.projectiles.filter(pr => !pr.dead);
+
+    // cores streak to the base as feedback only (salvage already banked on the kill)
+    for (const c of g.cores) {
+      const dx = g.bx - c.x, dy = g.by - c.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const sp = 240 + (1 - Math.min(1, d / 400)) * 240; // accelerate as it nears
+      c.x += (dx / d) * sp * dt;
+      c.y += (dy / d) * sp * dt;
+      c.spin += dt * 6;
+      if (d < 24) { spawnBurst(g.bx, g.by - 10, '#C98A00', 8); c.dead = true; }
+    }
+    g.cores = g.cores.filter(c => !c.dead);
+
+    // particles
+    for (const pa of g.particles) {
+      pa.x += pa.vx * dt; pa.y += pa.vy * dt;
+      pa.vx *= 0.92; pa.vy *= 0.92;
+      pa.life -= dt;
+    }
+    g.particles = g.particles.filter(pa => pa.life > 0);
+
+    // shield recharge — only after a lull with no incoming damage
+    if (g.shieldCooldown > 0) g.shieldCooldown = Math.max(0, g.shieldCooldown - dt);
+    else if (p.shield < p.shieldMax) p.shield = Math.min(p.shieldMax, p.shield + p.shieldRegen * dt);
+
+    if (g.shake > 0) g.shake = Math.max(0, g.shake - dt * 60);
+    if (g.flashBase > 0) g.flashBase = Math.max(0, g.flashBase - dt * 3);
+    if (g.shieldFlash > 0) g.shieldFlash = Math.max(0, g.shieldFlash - dt * 3);
+  }
+
+  function fireVolley() {
+    const g = game, p = g.p;
+    // pick nearest `multishot` enemies within range
+    const inRange = g.enemies
+      .filter(e => Math.hypot(e.x-g.bx, e.y-g.by) <= p.range)
+      .sort((a,b) => (Math.hypot(a.x-g.bx,a.y-g.by) - Math.hypot(b.x-g.bx,b.y-g.by)));
+    const targets = inRange.slice(0, p.multishot);
+    for (const t of targets) {
+      // lead slightly toward current position
+      const dx = t.x - g.bx, dy = (t.y) - (g.by - 18);
+      const d = Math.hypot(dx, dy) || 1;
+      g.projectiles.push({
+        x: g.bx, y: g.by - 18,
+        vx: (dx/d) * p.projSpeed, vy: (dy/d) * p.projSpeed,
+        r: 3.5, dmg: p.damage, pierce: p.pierce, life: 2.2,
+        hit: new Set(),
+      });
+    }
+  }
+
+  function killEnemy(e) {
+    if (e.dead) return;
+    e.dead = true;
+    const g = game;
+    g.kills++;
+    addScore(e.pts);
+    addResearch(e.pts);
+    spawnBurst(e.x, e.y, e.color, 8);
+    if (e.carrier) grantCore(e.x, e.y);
+  }
+
+  // Destroying a carrier banks its salvage immediately — no falling/collecting, so it
+  // can never be missed. The core that spawns is purely a cosmetic streak to the base.
+  function grantCore(x, y) {
+    const g = game;
+    g.coresCollected++;
+    g.salvageRun += g.p.coreValue;
+    addScore(50);
+    g.flashBase = 1;
+    $('h-salvage').textContent = g.salvageRun;
+    $('h-cores').textContent = g.coresCollected;
+    g.cores.push({ x, y, r: 9, spin: 0 });
+  }
+
+  function addScore(n) {
+    game.score += Math.round(n * game.p.scoreMult);
+    $('h-score').textContent = game.score.toLocaleString();
+  }
+
+  function addResearch(n) {
+    const g = game;
+    g.research += n;
+    while (g.research >= g.researchNeed) {
+      g.research -= g.researchNeed;
+      g.researchNeed = Math.round(g.researchNeed * 1.55);
+      g.pendingPicks++;
+    }
+    if (g.pendingPicks > 0 && runningState === 'playing') openUpgrade();
+  }
+
+  function damageBase(n) {
+    const g = game, p = g.p;
+    g.shieldCooldown = p.shieldDelay; // any hit pauses shield recharge
+    if (p.shield > 0 && n > 0) {       // shield absorbs first
+      const absorbed = Math.min(p.shield, n);
+      p.shield -= absorbed; n -= absorbed;
+      g.shieldFlash = 1;
+    }
+    if (n > 0) {                        // overflow hits the hull
+      p.baseHP -= n;
+      g.shake = Math.min(14, 6 + n * 0.2);
+      g.flashBase = 1;
+    }
+    if (p.baseHP <= 0) { p.baseHP = 0; endRun(true); }
+  }
+
+  function spawnBurst(x, y, color, n) {
+    const g = game;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, s = 30 + Math.random() * 110;
+      g.particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.3+Math.random()*0.3, color });
+    }
+  }
+
+  // ───────────────────────── Render ─────────────────────────
+  function render() {
+    const g = game, p = g.p;
+    ctx.clearRect(0, 0, W, H);
+
+    let sx = 0, sy = 0;
+    if (g.shake > 0) { sx = (Math.random()-0.5)*g.shake; sy = (Math.random()-0.5)*g.shake; }
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // range ring
+    ctx.strokeStyle = 'rgba(11,61,145,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(g.bx, g.by, p.range, 0, 6.2832); ctx.stroke();
+
+    // cores
+    for (const c of g.cores) drawCore(c);
+
+    // enemies
+    for (const e of g.enemies) drawEnemy(e);
+
+    // projectiles
+    for (const pr of g.projectiles) {
+      ctx.strokeStyle = 'rgba(11,61,145,0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(pr.x, pr.y);
+      ctx.lineTo(pr.x - pr.vx*0.02, pr.y - pr.vy*0.02); ctx.stroke();
+      ctx.fillStyle = '#FC3D21';
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, 6.2832); ctx.fill();
+    }
+
+    // particles
+    for (const pa of g.particles) {
+      ctx.globalAlpha = Math.max(0, pa.life * 2.5);
+      ctx.fillStyle = pa.color;
+      ctx.fillRect(pa.x-1.5, pa.y-1.5, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+
+    // rocky hill silhouette, then the base planted on it
+    drawHill();
+    drawBase(g.bx, g.by, p.baseHP / p.baseMax, g.flashBase);
+
+    ctx.restore();
+  }
+
+  function drawEnemy(e) {
+    // proximity shadow cast on the surface below — a cached soft sprite, offset away
+    // from a fixed light source and squashed to the ground plane. Far from the surface
+    // it is wide and faint; as it descends it draws in and darkens into a contact shadow.
+    const dToBase = Math.hypot(e.x - game.bx, e.y - game.by);
+    const prox = Math.max(0, Math.min(1, 1 - dToBase / ((game.diag || Math.hypot(W, H)) * 0.62)));
+    const far = 1 - prox;
+    {
+      const off = far * e.r * 1.1;             // displaced from object when high up
+      const sx  = e.x + off * 0.30;            // light from upper-left → shadow lower-right
+      const sy  = e.y + e.r * 0.2 + off * 0.55;
+      const w   = e.r * (2.7 + far * 3.4);     // tight when close → wide when far
+      const h   = w * 0.6;                      // squashed to the ground plane
+      ctx.globalAlpha = 0.05 + prox * 0.16;    // faint when far → a touch darker when close
+      ctx.drawImage(shadowSprite, sx - w/2, sy - h/2, w, h);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    const hpFrac = e.hp / e.maxhp;
+    if (e.type === 'carrier') {
+      ctx.rotate(e.phase * 0.4);
+      // glow
+      ctx.shadowColor = '#FC3D21'; ctx.shadowBlur = 16;
+      ctx.strokeStyle = '#FC3D21'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(252,61,33,0.25)';
+      ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.fill();
+      // ticks
+      ctx.strokeStyle = '#FC3D21';
+      for (let i=0;i<4;i++){ ctx.rotate(1.5708); ctx.beginPath(); ctx.moveTo(0,-e.r-4); ctx.lineTo(0,-e.r-9); ctx.stroke(); }
+      // core dot
+      ctx.fillStyle = '#C98A00';
+      ctx.beginPath(); ctx.arc(0,0,4,0,6.2832); ctx.fill();
+    } else if (e.type === 'hulk') {
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.rect(-e.r,-e.r,e.r*2,e.r*2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(10,14,20,0.4)';
+      ctx.beginPath(); ctx.moveTo(-e.r*0.4,-e.r); ctx.lineTo(-e.r*0.4,e.r);
+      ctx.moveTo(e.r*0.4,-e.r); ctx.lineTo(e.r*0.4,e.r); ctx.stroke();
+    } else if (e.type === 'swarm') {
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r,e.r); ctx.lineTo(-e.r,e.r); ctx.closePath(); ctx.fill();
+    } else { // drone — diamond
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r,0); ctx.lineTo(0,e.r); ctx.lineTo(-e.r,0); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+    // hp bar for tougher enemies
+    if (hpFrac < 1 && (e.type === 'hulk' || e.type === 'carrier')) {
+      ctx.fillStyle = 'rgba(11,61,145,0.18)';
+      ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2, 3);
+      ctx.fillStyle = e.type === 'carrier' ? '#C98A00' : '#FC3D21';
+      ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2*hpFrac, 3);
+    }
+  }
+
+  function drawCore(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.rotate(c.spin);
+    ctx.shadowColor = '#C98A00'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#C98A00';
+    ctx.beginPath(); ctx.moveTo(0,-c.r); ctx.lineTo(c.r,0); ctx.lineTo(0,c.r); ctx.lineTo(-c.r,0); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#FFF8E6';
+    ctx.beginPath(); ctx.arc(0,0,2.5,0,6.2832); ctx.fill();
+    ctx.restore();
+  }
+
+  // Rocky hill the base sits on — a deterministic silhouette built per resize.
+  function buildHill() {
+    if (!game || !W || !H) return;
+    const segs = Math.max(18, Math.round(W / 26));
+    const baseEl = 20;   // rocky ridge height at the edges
+    const crest  = 50;   // central rise under the base
+    const cx = W / 2;
+    const frac = i => { const s = Math.sin(i * 127.1 + 3.7) * 43758.5453; return s - Math.floor(s); };
+    const front = [], back = [];
+    for (let i = 0; i <= segs; i++) {
+      const x = (W * i) / segs;
+      const t = (x - cx) / (W * 0.5);
+      const bump = Math.max(0, 1 - t * t);          // parabolic hill, peak at centre
+      const spike = (i % 3 === 0 ? frac(i) * 16 : frac(i) * 7) * (1 - bump * 0.7);
+      front.push({ x, y: H - (baseEl + bump * crest + spike) });
+      back.push({ x, y: H - (baseEl * 0.6 + bump * crest * 0.66 + frac(i + 9) * 7 + 10) });
+    }
+    game.hill = front; game.hillBack = back;
+  }
+
+  function ridgePath(pts) {
+    ctx.beginPath();
+    ctx.moveTo(-4, H + 4);
+    for (const pt of pts) ctx.lineTo(pt.x, pt.y);
+    ctx.lineTo(W + 4, H + 4);
+    ctx.closePath();
+  }
+
+  function drawHill() {
+    const g = game;
+    if (!g.hill) return;
+    ctx.fillStyle = 'rgba(11,61,145,0.16)'; // far ridge
+    ridgePath(g.hillBack); ctx.fill();
+    ctx.fillStyle = '#0A0E14';               // near hill silhouette
+    ridgePath(g.hill); ctx.fill();
+  }
+
+  function drawBase(x, y, hpFrac, flash) {
+    ctx.save();
+    ctx.translate(x, y);
+    // dark silhouette — platform, dome and barrel merge into the hill below
+    ctx.fillStyle = flash > 0 ? '#FC3D21' : '#0A0E14';
+    const w = 30;
+    ctx.beginPath();
+    ctx.moveTo(-w, 22); ctx.lineTo(-w*0.7, -6); ctx.lineTo(w*0.7, -6); ctx.lineTo(w, 22);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -6, 9, Math.PI, 0); ctx.fill(); // dome
+    ctx.fillRect(-2, -21, 4, 16);                               // barrel
+    // integrity arc — the one bright readout on the silhouette
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(11,61,145,0.18)';
+    ctx.beginPath(); ctx.arc(0, 0, 27, Math.PI*0.15, Math.PI*0.85); ctx.stroke();
+    ctx.strokeStyle = hpFrac > 0.3 ? '#1E7F4F' : '#FC3D21';
+    ctx.beginPath(); ctx.arc(0, 0, 27, Math.PI*0.15, Math.PI*0.15 + Math.PI*0.7*hpFrac); ctx.stroke();
+    // shield dome — brightness tracks remaining shield; pulses when it absorbs a hit
+    const sp = game.p;
+    if (sp.shieldMax > 0 && sp.shield > 0) {
+      const sf = sp.shield / sp.shieldMax;
+      const fl = game.shieldFlash;
+      ctx.fillStyle = `rgba(55,166,230,${0.04 + sf*0.05 + fl*0.13})`;
+      ctx.beginPath(); ctx.arc(0, 4, 46, Math.PI, 2*Math.PI); ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(55,166,230,${0.22 + sf*0.5 + fl*0.35})`;
+      ctx.beginPath(); ctx.arc(0, 4, 46, Math.PI, 2*Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ───────────────────────── HUD ─────────────────────────
+  function syncHud() {
+    const g = game, p = g.p;
+    $('h-wave').textContent = g.wave;
+    const intPct = Math.max(0, Math.round(p.baseHP / p.baseMax * 100));
+    $('m-int-bar').style.width = intPct + '%';
+    $('m-int-pct').textContent = intPct + '%';
+    if (p.shieldMax > 0) {
+      $('shield-row').style.display = '';
+      $('shield-meter').style.display = '';
+      const shPct = Math.max(0, Math.round(p.shield / p.shieldMax * 100));
+      $('m-shd-bar').style.width = shPct + '%';
+      $('m-shd-pct').textContent = shPct + '%';
+    } else {
+      $('shield-row').style.display = 'none';
+      $('shield-meter').style.display = 'none';
+    }
+    const resPct = Math.min(100, Math.round(g.research / g.researchNeed * 100));
+    $('m-res-bar').style.width = resPct + '%';
+    $('m-res-pct').textContent = resPct + '%';
+  }
+
+  // ───────────────────────── Loop ─────────────────────────
+  function frame(t) {
+    rafId = requestAnimationFrame(frame);
+    let dt = (t - lastT) / 1000;
+    lastT = t;
+    if (dt > 0.05) dt = 0.05; // clamp big gaps
+    if (runningState === 'playing') {
+      update(dt);
+      syncHud();
+    }
+    if (game) render();
+  }
+
+  // ───────────────────────── Upgrade flow ─────────────────────────
+  const upgradeModal = $('upgrade-modal');
+  function openUpgrade() {
+    runningState = 'upgrading';
+    const picks = pick3();
+    const body = $('upgrade-body');
+    body.innerHTML = '';
+    $('upg-count').textContent = game.pendingPicks > 1 ? `PICK 1 · ${game.pendingPicks} QUEUED` : 'PICK 1';
+    picks.forEach(u => {
+      const btn = document.createElement('button');
+      btn.className = 'card';
+      btn.innerHTML = `<div class="c-top"><span class="c-name">${u.name}</span><span class="c-tag">${u.tag}</span></div>
+                       <div class="c-desc">${u.desc}</div>`;
+      btn.addEventListener('click', () => chooseUpgrade(u));
+      body.appendChild(btn);
+    });
+    upgradeModal.classList.add('open');
+  }
+  function pick3() {
+    const pool = UPGRADES.slice();
+    const out = [];
+    for (let i = 0; i < 3 && pool.length; i++) {
+      out.push(pool.splice(Math.floor(Math.random()*pool.length), 1)[0]);
+    }
+    return out;
+  }
+  function chooseUpgrade(u) {
+    u.apply(game.p);
+    game.pendingPicks--;
+    upgradeModal.classList.remove('open');
+    if (game.pendingPicks > 0) {
+      setTimeout(openUpgrade, 60);
+    } else {
+      runningState = 'playing';
+      lastT = performance.now();
+    }
+  }
+
+  // ───────────────────────── End run / report ─────────────────────────
+  function endRun(destroyed) {
+    if (runningState === 'over') return;
+    runningState = 'over';
+    const g = game;
+    save.salvage += g.salvageRun;
+    save.best = Math.max(save.best, g.score);
+    save.runs += 1;
+    persist();
+
+    $('r-title').textContent = destroyed ? 'Base destroyed' : 'Run complete';
+    $('r-title').classList.toggle('destroyed', destroyed);
+    $('r-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    $('r-score').textContent = g.score.toLocaleString();
+    $('r-wave').textContent = g.wave;
+    $('r-kills').textContent = g.kills;
+    $('r-cores').textContent = g.coresCollected;
+    $('r-salvage').textContent = '+' + g.salvageRun;
+    setTimeout(() => show('report'), 700); // let final burst show
+  }
+
+  function abortRun() { endRun(false); }
+
+  // ───────────────────────── Pause ─────────────────────────
+  const pauseOverlay = $('pause-overlay');
+  $('pause-btn').addEventListener('click', () => {
+    if (runningState !== 'playing') return;
+    runningState = 'paused';
+    pauseOverlay.classList.add('open');
+  });
+  $('resume-btn').addEventListener('click', () => {
+    if (runningState !== 'paused') return;
+    runningState = 'playing';
+    pauseOverlay.classList.remove('open');
+    lastT = performance.now();
+  });
+  $('abort-btn').addEventListener('click', () => {
+    pauseOverlay.classList.remove('open');
+    abortRun();
+  });
+
+  // ───────────────────────── Title screen ─────────────────────────
+  function syncTitle() {
+    $('t-salvage').textContent = save.salvage.toLocaleString();
+    $('t-best').textContent = save.best.toLocaleString();
+    $('t-runs').textContent = save.runs;
+    $('t-wave').textContent = save.deepestWave;
+  }
+
+  $('launch-btn').addEventListener('click', startRun);
+  $('meta-btn').addEventListener('click', openMeta);
+  $('how-btn').addEventListener('click', () => $('how-modal').classList.add('open'));
+  $('how-close').addEventListener('click', () => $('how-modal').classList.remove('open'));
+
+  $('r-again-btn').addEventListener('click', startRun);
+  $('r-title-btn').addEventListener('click', () => { syncTitle(); show('title'); });
+  $('r-meta-btn').addEventListener('click', openMeta);
+
+  // ───────────────────────── Meta shop ─────────────────────────
+  const metaModal = $('meta-modal');
+  function openMeta() {
+    renderMeta();
+    metaModal.classList.add('open');
+  }
+  $('meta-close').addEventListener('click', () => {
+    metaModal.classList.remove('open');
+    syncTitle();
+  });
+  metaModal.addEventListener('click', e => { if (e.target === metaModal) { metaModal.classList.remove('open'); syncTitle(); } });
+
+  function renderMeta() {
+    $('meta-balance').textContent = save.salvage.toLocaleString() + ' SALVAGE';
+    const body = $('meta-body');
+    body.innerHTML = '';
+    META.forEach(m => {
+      const lvl = save.meta[m.id] || 0;
+      const maxed = lvl >= m.max;
+      const cost = maxed ? 0 : m.cost(lvl);
+      const card = document.createElement('div');
+      card.className = 'shop-card';
+      let pips = '';
+      for (let i = 0; i < m.max; i++) pips += `<span class="pip${i<lvl?' on':''}"></span>`;
+      card.innerHTML = `
+        <div class="s-top">
+          <span class="s-name">${m.name}</span>
+          <span class="s-lvl">LV ${lvl}/${m.max}</span>
+        </div>
+        <div class="s-desc">${maxed ? 'Fully upgraded.' : m.desc(lvl)}</div>
+        <div class="pips">${pips}</div>
+        <button class="shop-buy${maxed?' maxed':''}" ${maxed||save.salvage<cost?'disabled':''}>
+          ${maxed ? 'MAX' : cost + ' SALVAGE'}
+        </button>`;
+      if (!maxed) {
+        card.querySelector('.shop-buy').addEventListener('click', () => {
+          if (save.salvage >= cost) {
+            save.salvage -= cost;
+            save.meta[m.id] = lvl + 1;
+            persist();
+            renderMeta();
+          }
+        });
+      }
+      body.appendChild(card);
+    });
+  }
+
+  // ───────────────────────── Boot ─────────────────────────
+  syncTitle();
+  show('title');
+})();
+</script>
+</body>
+</html>
