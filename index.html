@@ -620,6 +620,7 @@
       research: 0, researchNeed: 120, pendingPicks: 0,
       flashBase: 0, shake: 0, shieldCooldown: 0, shieldFlash: 0,
       diag: Math.hypot(W, H),
+      locks: [], barrelAngles: [], t: 0,
     };
     runningState = 'playing';
     $('h-cores').textContent = '0';
@@ -726,11 +727,14 @@
     }
     g.enemies = g.enemies.filter(e => !e.dead);
 
-    // turret firing
+    // targeting — lock the nearest enemies (pre-targeted even before in range) and aim
+    acquireTargets();
+    aimBarrels(dt);
+
+    // turret firing — only at locked targets within range; cadence holds until a shot lands
     g.fireTimer -= dt;
-    if (g.fireTimer <= 0 && g.enemies.length > 0) {
-      fireVolley();
-      g.fireTimer = p.fireInterval;
+    if (g.fireTimer <= 0 && g.locks.length > 0) {
+      if (fireVolley()) g.fireTimer = p.fireInterval;
     }
 
     // projectiles
@@ -781,26 +785,60 @@
     if (g.shake > 0) g.shake = Math.max(0, g.shake - dt * 60);
     if (g.flashBase > 0) g.flashBase = Math.max(0, g.flashBase - dt * 3);
     if (g.shieldFlash > 0) g.shieldFlash = Math.max(0, g.shieldFlash - dt * 3);
+    g.t += dt;
+  }
+
+  // Lock the nearest `multishot` enemies — these are pre-targeted even while still out
+  // of range, so the barrels can track and the aim lines can preview the intended kill.
+  function acquireTargets() {
+    const g = game;
+    g.locks = g.enemies
+      .map(e => ({ e, d: Math.hypot(e.x - g.bx, e.y - g.by) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, g.p.multishot)
+      .map(o => o.e);
+  }
+
+  // Rotate each barrel smoothly toward its locked target (servo motion); barrels with
+  // no target ease back to their resting fan angle.
+  function aimBarrels(dt) {
+    const g = game, n = g.p.multishot;
+    const spread = Math.min((n - 1) * 0.30, 1.5);
+    if (g.barrelAngles.length !== n) {
+      g.barrelAngles = [];
+      for (let i = 0; i < n; i++) g.barrelAngles.push(n === 1 ? 0 : (i / (n - 1) - 0.5) * spread);
+    }
+    const k = Math.min(1, dt * 12);
+    for (let i = 0; i < n; i++) {
+      let desired = n === 1 ? 0 : (i / (n - 1) - 0.5) * spread; // rest
+      const tgt = g.locks[i];
+      if (tgt) {
+        let rot = Math.atan2(tgt.y - g.by, tgt.x - g.bx) + Math.PI / 2;
+        if (rot > Math.PI) rot -= 2 * Math.PI;
+        else if (rot < -Math.PI) rot += 2 * Math.PI;
+        desired = Math.max(-1.55, Math.min(1.55, rot)); // never aim into the ground
+      }
+      g.barrelAngles[i] += (desired - g.barrelAngles[i]) * k;
+    }
   }
 
   function fireVolley() {
     const g = game, p = g.p;
-    // pick nearest `multishot` enemies within range
-    const inRange = g.enemies
-      .filter(e => Math.hypot(e.x-g.bx, e.y-g.by) <= p.range)
-      .sort((a,b) => (Math.hypot(a.x-g.bx,a.y-g.by) - Math.hypot(b.x-g.bx,b.y-g.by)));
-    const targets = inRange.slice(0, p.multishot);
-    for (const t of targets) {
-      // lead slightly toward current position
-      const dx = t.x - g.bx, dy = (t.y) - (g.by - 18);
-      const d = Math.hypot(dx, dy) || 1;
+    const ox = g.bx, oy = g.by - 18;
+    let fired = false;
+    for (const e of g.locks) {
+      if (!e || e.dead) continue;
+      if (Math.hypot(e.x - g.bx, e.y - g.by) > p.range) continue; // pre-targeted but not yet in range
+      const dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy) || 1;
       g.projectiles.push({
-        x: g.bx, y: g.by - 18,
+        x: ox, y: oy,
         vx: (dx/d) * p.projSpeed, vy: (dy/d) * p.projSpeed,
         r: 3.5, dmg: p.damage, pierce: p.pierce, life: 2.2,
         hit: new Set(),
       });
+      fired = true;
     }
+    return fired;
   }
 
   function killEnemy(e) {
@@ -887,6 +925,9 @@
 
     // enemies
     for (const e of g.enemies) drawEnemy(e);
+
+    // pre-target aim lines from the turret to its locked targets
+    drawTargeting();
 
     // projectiles
     for (const pr of g.projectiles) {
@@ -1023,33 +1064,97 @@
     ridgePath(g.hill); ctx.fill();
   }
 
+  // Pre-target aim lines: a subtle dashed line from the turret to each locked target,
+  // fading out with distance. Faint blue while the target is still out of range,
+  // vermilion with a reticle once it is in range and being fired upon.
+  function drawTargeting() {
+    const g = game;
+    if (!g.locks || !g.locks.length) return;
+    const ox = g.bx, oy = g.by - 10;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.lineDashOffset = -(g.t * 22) % 8;
+    for (const e of g.locks) {
+      if (!e || e.dead) continue;
+      const inRange = Math.hypot(e.x - g.bx, e.y - g.by) <= g.p.range;
+      const tint = inRange ? '252,61,33' : '11,61,145';
+      const grad = ctx.createLinearGradient(ox, oy, e.x, e.y);
+      grad.addColorStop(0, `rgba(${tint},${inRange ? 0.55 : 0.32})`);
+      grad.addColorStop(1, `rgba(${tint},0)`);          // fade out toward the target
+      ctx.strokeStyle = grad;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(e.x, e.y); ctx.stroke();
+      if (inRange) {                                     // lock reticle on the engaged target
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(252,61,33,0.55)';
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 4, 0, 6.2832); ctx.stroke();
+        ctx.setLineDash([3, 5]);
+      }
+    }
+    ctx.restore();
+  }
+
   function drawBase(x, y, hpFrac, flash) {
+    const p = game.p;
+    const ink = flash > 0 ? '#FC3D21' : '#0A0E14';
+    // silhouette geometry is derived from the build, so the base visibly evolves:
+    const hw      = Math.min(46, 22 + Math.max(0, p.baseMax - 100) * 0.085); // platform width ← integrity
+    const domeR   = Math.min(14, 9 + Math.max(0, p.baseMax - 100) * 0.02);
+    const barrels = Math.max(1, Math.min(7, p.multishot));                    // barrel count ← multishot
+    const blen    = Math.min(32, 13 + Math.max(0, p.range - 240) * 0.05);     // barrel length ← range
+    const bthick  = Math.min(6.5, 2.6 + Math.max(0, p.damage - 3) * 0.22);    // barrel girth ← damage
+    const arcR    = hw + 5;
+    const shR     = hw + 24;
+
     ctx.save();
     ctx.translate(x, y);
-    // dark silhouette — platform, dome and barrel merge into the hill below
-    ctx.fillStyle = flash > 0 ? '#FC3D21' : '#0A0E14';
-    const w = 30;
+
+    // turret barrels — one per multishot level, each aimed at its locked target
+    ctx.fillStyle = ink;
+    const spread = Math.min((barrels - 1) * 0.30, 1.5);
+    for (let i = 0; i < barrels; i++) {
+      const rest = barrels === 1 ? 0 : (i / (barrels - 1) - 0.5) * spread;
+      const ang = (game.barrelAngles && game.barrelAngles[i] !== undefined) ? game.barrelAngles[i] : rest;
+      ctx.save();
+      ctx.translate(0, -6);
+      ctx.rotate(ang);
+      ctx.fillRect(-bthick/2, -(domeR + blen), bthick, blen + domeR);
+      ctx.restore();
+    }
+
+    // platform + dome silhouette
     ctx.beginPath();
-    ctx.moveTo(-w, 22); ctx.lineTo(-w*0.7, -6); ctx.lineTo(w*0.7, -6); ctx.lineTo(w, 22);
+    ctx.moveTo(-hw, 22); ctx.lineTo(-hw*0.7, -6); ctx.lineTo(hw*0.7, -6); ctx.lineTo(hw, 22);
     ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -6, 9, Math.PI, 0); ctx.fill(); // dome
-    ctx.fillRect(-2, -21, 4, 16);                               // barrel
+    ctx.beginPath(); ctx.arc(0, -6, domeR, Math.PI, 0); ctx.fill();
+
+    // armour plating notches emerge as the hull is reinforced
+    if (p.baseMax > 120) {
+      ctx.strokeStyle = 'rgba(127,168,224,0.5)';
+      ctx.lineWidth = 1;
+      const plates = Math.min(4, Math.floor((p.baseMax - 100) / 30));
+      for (let i = 1; i <= plates; i++) {
+        const px = -hw + (hw * 2) * (i / (plates + 1));
+        ctx.beginPath(); ctx.moveTo(px, -3); ctx.lineTo(px, 20); ctx.stroke();
+      }
+    }
+
     // integrity arc — the one bright readout on the silhouette
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(11,61,145,0.18)';
-    ctx.beginPath(); ctx.arc(0, 0, 27, Math.PI*0.15, Math.PI*0.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, arcR, Math.PI*0.15, Math.PI*0.85); ctx.stroke();
     ctx.strokeStyle = hpFrac > 0.3 ? '#1E7F4F' : '#FC3D21';
-    ctx.beginPath(); ctx.arc(0, 0, 27, Math.PI*0.15, Math.PI*0.15 + Math.PI*0.7*hpFrac); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, arcR, Math.PI*0.15, Math.PI*0.15 + Math.PI*0.7*hpFrac); ctx.stroke();
+
     // shield dome — brightness tracks remaining shield; pulses when it absorbs a hit
-    const sp = game.p;
-    if (sp.shieldMax > 0 && sp.shield > 0) {
-      const sf = sp.shield / sp.shieldMax;
+    if (p.shieldMax > 0 && p.shield > 0) {
+      const sf = p.shield / p.shieldMax;
       const fl = game.shieldFlash;
       ctx.fillStyle = `rgba(55,166,230,${0.04 + sf*0.05 + fl*0.13})`;
-      ctx.beginPath(); ctx.arc(0, 4, 46, Math.PI, 2*Math.PI); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 4, shR, Math.PI, 2*Math.PI); ctx.closePath(); ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = `rgba(55,166,230,${0.22 + sf*0.5 + fl*0.35})`;
-      ctx.beginPath(); ctx.arc(0, 4, 46, Math.PI, 2*Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 4, shR, Math.PI, 2*Math.PI); ctx.stroke();
     }
     ctx.restore();
   }
