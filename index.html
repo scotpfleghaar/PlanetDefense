@@ -665,9 +665,15 @@
     game.wave++;
     save.deepestWave = Math.max(save.deepestWave, game.wave);
     const w = game.wave;
-    const count = 5 + Math.floor(w * 1.8);
-    const hpMult = 1 + (w-1) * 0.16;
-    const speedMult = 1 + (w-1) * 0.035;
+    // TODO: All these magic numbers in nextwave need constants so the game can be tuned.
+    const multipliers = {
+      countMultiplier: 1.8,
+      hpMultiplier: 0.16,
+      speedMultiplier: 0.035
+    }
+    const count = 5 + Math.floor(w * multipliers.countMultiplier);
+    const hpMult = 1 + (w-1) * multipliers.hpMultiplier;
+    const speedMult = 1 + (w-1) * multipliers.speedMultiplier;
     const q = [];
     for (let i = 0; i < count; i++) {
       let type = 'drone';
@@ -862,15 +868,18 @@
     g.t += dt;
   }
 
-  // Lock the nearest `multishot` enemies — these are pre-targeted even while still out
-  // of range, so the barrels can track and the aim lines can preview the intended kill.
+  // Assign one target per turret, nearest first. If there are fewer enemies than
+  // turrets, the extra turrets wrap around and concentrate fire on the nearest ones
+  // (so no turret sits idle while a target is alive). Pre-targets even out of range.
   function acquireTargets() {
-    const g = game;
-    g.locks = g.enemies
+    const g = game, n = g.p.multishot;
+    const sorted = g.enemies
       .map(e => ({ e, d: Math.hypot(e.x - g.bx, e.y - g.by) }))
       .sort((a, b) => a.d - b.d)
-      .slice(0, g.p.multishot)
       .map(o => o.e);
+    const locks = [];
+    if (sorted.length) for (let i = 0; i < n; i++) locks.push(sorted[i % sorted.length]);
+    g.locks = locks;
   }
 
   // Rotate each barrel smoothly toward its locked target (servo motion); barrels with
@@ -1017,7 +1026,7 @@
     g.research += n;
     while (g.research >= g.researchNeed) {
       g.research -= g.researchNeed;
-      g.researchNeed = Math.round(g.researchNeed * 1.55);
+      g.researchNeed = Math.round(g.researchNeed * 1.2); // 1.55
       g.pendingPicks++;
     }
     if (g.pendingPicks > 0 && runningState === 'playing') openUpgrade();
