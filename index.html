@@ -235,6 +235,7 @@
       opacity: 0; transition: opacity 0.3s;
     }
     .wave-banner.show { opacity: 1; }
+    .wave-banner.storm { background: rgba(20,28,45,0.9); }
 
     /* paused overlay */
     .pause-overlay {
@@ -556,7 +557,7 @@
     { name:'Flak Cannon', tag:'Weapon', desc:'Refit a turret to a short-range scatter of pellets. Great vs swarms.',
       apply:p=>refitTurret(p, 'flak') },
     // rare one-off building cards — each adds a structure somewhere on the ground
-    { name:'Missile Silo', tag:'Building', rare:true, desc:'Build a silo on the ground that launches swerving homing missiles at any enemy, any distance.',
+    { name:'Missile Silo', tag:'Building', rare:true, desc:'Build a silo on the ground that launches arcing missiles which strike any enemy, any distance.',
       apply:p=>addBuilding('silo') },
     { name:'Arc Tower', tag:'Building', rare:true, desc:'Build a tower that arcs chain-lightning between nearby enemies.',
       apply:p=>addBuilding('arc') },
@@ -609,6 +610,33 @@
     return c;
   })();
 
+  // Pre-rendered soft cloud puff (grey radial blob); alpha sets how pale/overcast it reads.
+  const cloudSprite = (() => {
+    const s = 128, c = document.createElement('canvas');
+    c.width = c.height = s;
+    const sc = c.getContext('2d');
+    const g = sc.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+    g.addColorStop(0,    'rgba(84,94,112,1)');
+    g.addColorStop(0.55, 'rgba(84,94,112,0.5)');
+    g.addColorStop(1,    'rgba(84,94,112,0)');
+    sc.fillStyle = g;
+    sc.beginPath(); sc.arc(s/2, s/2, s/2, 0, 6.2832); sc.fill();
+    return c;
+  })();
+
+  // ───────────────────────── Weather ─────────────────────────
+  const WEATHER = {
+    ambientClouds: 3, stormClouds: 8,   // sky population (clear vs overcast)
+    cloudBand: [0.05, 0.42],            // cloud altitude as a fraction of H
+    cloudSpeed: [6, 16],                // horizontal drift px/s
+    stormChance: 0.12,                  // per wave (from wave 3+)
+    rangeMul: 0.8,                      // storm turret-range debuff
+    slowMul: 0.85,                      // storm enemy-speed debuff
+    rainCount: 150,
+    lightningGap: [2.0, 4.5],           // seconds between strikes during a storm
+    lightningDmg: 30,                   // + 2× player damage; chains to 2 nearby
+  };
+
   function resizeCanvas() {
     const r = cv.getBoundingClientRect(); // canvas is sized to the full viewport via CSS
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -655,12 +683,15 @@
       enemies: [], projectiles: [], cores: [], particles: [],
       score: 0, kills: 0, coresCollected: 0, salvageRun: 0,
       wave: 0,
-      spawnQueue: [], spawnTimer: 0, betweenWaves: 1.0,
+      spawnQueue: [], spawnTimer: 0, spawnGap: 0.5, betweenWaves: 1.0,
       turretTimers: [], beams: [], buildings: [],
       research: 0, researchNeed: 120, pendingPicks: 0,
       flashBase: 0, shake: 0, shieldCooldown: 0, shieldFlash: 0,
       diag: Math.hypot(W, H),
       locks: [], barrelAngles: [], t: 0,
+      // weather
+      storm: false, weatherRange: 1, weatherSlow: 1, cloudDark: 0, cloudsSeeded: false,
+      clouds: [], rain: [], lightning: [], lightningTimer: 0, flash: 0,
     };
     runningState = 'playing';
     $('h-cores').textContent = '0';
@@ -680,9 +711,8 @@
     countQuad: 0.15,       // + this many per wave² (accelerating, uncapped swarms)
     hpPerWave: 0.16,       // enemy HP scaling per wave
     speedPerWave: 0.035,   // enemy speed scaling per wave
-    spawnGapStart: 0.95,   // seconds between spawns at wave 1
-    spawnGapPerWave: 0.05, // spawns get this much faster each wave
-    spawnGapMin: 0.06,     // floor (just to avoid spawning many per frame)
+    spawnWindow: 10,       // the whole wave's enemies spawn spread over ~this many seconds
+    spawnGapMin: 0.02,     // floor on the per-enemy gap
   };
 
   function nextWave() {
@@ -704,17 +734,24 @@
       q.splice(at, 0, { type:'carrier', hpMult, speedMult });
     }
     game.spawnQueue = q;
+    game.spawnGap = Math.max(WAVE.spawnGapMin, WAVE.spawnWindow / q.length); // spread the wave over ~spawnWindow seconds
     game.spawnTimer = 0.4;
+    // roll the weather for this wave: a small chance of a storm (range debuff + slow + lightning)
+    game.storm = w >= 3 && Math.random() < WEATHER.stormChance;
+    game.weatherRange = game.storm ? WEATHER.rangeMul : 1;
+    game.weatherSlow  = game.storm ? WEATHER.slowMul : 1;
+    if (game.storm) game.lightningTimer = 1.2;
     showWaveBanner(w);
   }
 
   const wb = $('wave-banner');
   let wbTimer = null;
   function showWaveBanner(w) {
-    wb.textContent = 'Wave ' + w;
+    wb.textContent = 'Wave ' + w + (game.storm ? '  ·  ⛈ STORM' : '');
+    wb.classList.toggle('storm', !!game.storm);
     wb.classList.add('show');
     clearTimeout(wbTimer);
-    wbTimer = setTimeout(() => wb.classList.remove('show'), 1600);
+    wbTimer = setTimeout(() => wb.classList.remove('show'), game.storm ? 2400 : 1600);
   }
 
   const ENEMY_DEFS = {
@@ -784,9 +821,9 @@
     // spawning
     if (g.spawnQueue.length > 0) {
       g.spawnTimer -= dt;
-      if (g.spawnTimer <= 0) {
+      while (g.spawnQueue.length > 0 && g.spawnTimer <= 0) { // spread evenly across the spawn window
         spawnEnemy(g.spawnQueue.shift());
-        g.spawnTimer = Math.max(WAVE.spawnGapMin, WAVE.spawnGapStart - g.wave * WAVE.spawnGapPerWave);
+        g.spawnTimer += g.spawnGap;
       }
     } else if (g.enemies.length === 0) {
       g.betweenWaves -= dt;
@@ -797,10 +834,10 @@
     for (const e of g.enemies) {
       const dx = g.bx - e.x, dy = g.by - e.y;
       const d = Math.hypot(dx, dy) || 1;
-      const sp = e.speed * p.slow;
+      const sp = e.speed * p.slow * g.weatherSlow; // storms slow enemies
       let vx = (dx/d) * sp, vy = (dy/d) * sp;
       if (e.weave) { // weavers strafe side-to-side as they approach
-        const wob = Math.sin(g.t * 3 + e.phase) * e.weave * p.slow;
+        const wob = Math.sin(g.t * 3 + e.phase) * e.weave * p.slow * g.weatherSlow;
         vx += (-dy/d) * wob; vy += (dx/d) * wob;
       }
       e.vx = vx; e.vy = vy; // remembered so debris can inherit momentum
@@ -829,7 +866,7 @@
       const e = g.locks[i];
       if (!e || e.dead) continue;
       const w = WEAPONS[p.turretWeapons[i]] || WEAPONS.cannon;
-      const wRange = p.range * (w.rangeMult || 1);
+      const wRange = p.range * g.weatherRange * (w.rangeMult || 1);
       if (Math.hypot(e.x - g.bx, e.y - g.by) > wRange) continue; // pre-targeted, not yet in range
       fireTurret(i, e);
       g.turretTimers[i] = p.fireInterval * w.fireMult;
@@ -837,7 +874,8 @@
 
     // ground buildings act on their own cadence
     updateBuildings(dt);
-    updateTruck(dt); // ambient little space truck
+    updateTruck(dt);   // ambient little space truck
+    updateWeather(dt); // clouds, rain, lightning
 
 
 
@@ -934,7 +972,7 @@
   //  • only when nothing is in range do turrets fall back to pre-targeting the
   //    nearest approaching enemies (aim lines, holding fire until they arrive).
   function acquireTargets() {
-    const g = game, n = g.p.multishot, range = g.p.range;
+    const g = game, n = g.p.multishot, range = g.p.range * g.weatherRange;
     const sorted = g.enemies
       .map(e => ({ e, d: Math.hypot(e.x - g.bx, e.y - g.by) }))
       .sort((a, b) => a.d - b.d);
@@ -1163,6 +1201,143 @@
     ctx.restore();
   }
 
+  // ───────────────────────── Weather systems ─────────────────────────
+  function makeCloud(seeded) {
+    const n = 3 + Math.floor(Math.random() * 3), scale = 0.7 + Math.random() * 0.9;
+    const puffs = [];
+    for (let i = 0; i < n; i++) {
+      puffs.push({ dx: (i - (n-1)/2) * 26 * scale + (Math.random()-0.5)*10,
+                   dy: (Math.random()-0.5) * 14 * scale,
+                   r: (26 + Math.random()*22) * scale });
+    }
+    const ext = n * 26 * scale;
+    const band = WEATHER.cloudBand;
+    return {
+      x: seeded ? Math.random() * W : -ext - Math.random() * W * 0.4,
+      y: H * (band[0] + Math.random() * (band[1] - band[0])),
+      speed: WEATHER.cloudSpeed[0] + Math.random() * (WEATHER.cloudSpeed[1] - WEATHER.cloudSpeed[0]),
+      puffs, ext,
+    };
+  }
+
+  function spawnWisp(x, y) {
+    if (game.particles.length > 360) return; // share the particle budget
+    game.particles.push({ x: x + (Math.random()-0.5)*8, y: y + (Math.random()-0.5)*8,
+      vx: 5 + (Math.random()-0.5)*14, vy: -6 - Math.random()*8,
+      life: 0.3 + Math.random()*0.3, color: 'rgba(150,160,178,0.35)', size: 1 + Math.random()*1.4 });
+  }
+
+  function updateWeather(dt) {
+    const g = game;
+    // ease the overcast darkness toward the storm state
+    g.cloudDark += ((g.storm ? 1 : 0) - g.cloudDark) * Math.min(1, dt * 0.7);
+
+    // clouds drift right; despawn off the right edge; refill from the left up to target
+    if (!g.cloudsSeeded) { g.cloudsSeeded = true; for (let i = 0; i < WEATHER.ambientClouds; i++) g.clouds.push(makeCloud(true)); }
+    const target = g.storm ? WEATHER.stormClouds : WEATHER.ambientClouds;
+    for (const cl of g.clouds) cl.x += cl.speed * (g.storm ? 1.5 : 1) * dt;
+    g.clouds = g.clouds.filter(cl => cl.x - cl.ext < W + 30);
+    while (g.clouds.length < target) g.clouds.push(makeCloud());
+
+    // enemies passing through a cloud shed wisps
+    for (const e of g.enemies) {
+      for (const cl of g.clouds) {
+        if (Math.abs(e.x - cl.x) < cl.ext && Math.abs(e.y - cl.y) < 30) {
+          if (Math.random() < 0.12) spawnWisp(e.x, e.y);
+          break;
+        }
+      }
+    }
+
+    // rain follows the overcast; cleared once the sky brightens
+    if (g.cloudDark > 0.05) updateRain(dt); else if (g.rain.length) g.rain.length = 0;
+
+    // storm lightning strikes a random enemy on a timer
+    if (g.storm) {
+      g.lightningTimer -= dt;
+      if (g.lightningTimer <= 0 && g.enemies.length) {
+        strikeLightning();
+        g.lightningTimer = WEATHER.lightningGap[0] + Math.random() * (WEATHER.lightningGap[1] - WEATHER.lightningGap[0]);
+      }
+    }
+    for (const lb of g.lightning) lb.life -= dt;
+    g.lightning = g.lightning.filter(lb => lb.life > 0);
+    if (g.flash > 0) g.flash = Math.max(0, g.flash - dt * 4);
+  }
+
+  function updateRain(dt) {
+    const g = game;
+    while (g.rain.length < WEATHER.rainCount) g.rain.push({ x: Math.random()*W, y: Math.random()*H, len: 10 + Math.random()*10, sp: 520 + Math.random()*220 });
+    for (const d of g.rain) {
+      d.y += d.sp * dt; d.x += d.sp * 0.18 * dt;
+      if (d.y > H) { d.y = -10; d.x = Math.random() * W; }
+      if (d.x > W) d.x -= W;
+    }
+  }
+
+  function jaggedSegments(x1, y1, x2, y2) {
+    const pts = [{ x: x1, y: y1 }], steps = 6 + Math.floor(Math.random()*4);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps, jit = (Math.random()-0.5) * 26;
+      pts.push({ x: x1 + (x2-x1)*t + jit, y: y1 + (y2-y1)*t + jit*0.2 });
+    }
+    pts.push({ x: x2, y: y2 });
+    return pts;
+  }
+
+  function strikeLightning() {
+    const g = game, p = g.p;
+    const target = g.enemies[Math.floor(Math.random() * g.enemies.length)];
+    if (!target) return;
+    const dmg = WEATHER.lightningDmg + p.damage * 2;
+    g.lightning.push({ segs: jaggedSegments(target.x + (Math.random()-0.5)*60, -10, target.x, target.y), life: 0.32, life0: 0.32 });
+    spawnBurst(target.x, target.y, '#FFFFFF', 9);
+    damageEnemy(target, dmg);
+    // chain to up to two nearby enemies
+    let from = target; const hit = new Set([target]);
+    for (let c = 0; c < 2; c++) {
+      let nxt = null, bd = 170;
+      for (const e of g.enemies) { if (e.dead || hit.has(e)) continue; const d = Math.hypot(e.x-from.x, e.y-from.y); if (d < bd) { bd = d; nxt = e; } }
+      if (!nxt) break;
+      hit.add(nxt);
+      g.lightning.push({ segs: jaggedSegments(from.x, from.y, nxt.x, nxt.y), life: 0.24, life0: 0.24 });
+      spawnBurst(nxt.x, nxt.y, '#37A6E6', 5);
+      damageEnemy(nxt, dmg * 0.6);
+      from = nxt;
+    }
+    g.flash = 1;
+  }
+
+  function drawClouds() {
+    const g = game;
+    if (!g.clouds.length) return;
+    ctx.globalAlpha = 0.10 + 0.26 * g.cloudDark; // pale when clear, dense when overcast
+    for (const cl of g.clouds)
+      for (const pf of cl.puffs)
+        ctx.drawImage(cloudSprite, cl.x + pf.dx - pf.r, cl.y + pf.dy - pf.r, pf.r * 2, pf.r * 2);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRain() {
+    const g = game;
+    if (!g.rain.length || g.cloudDark < 0.05) return;
+    ctx.strokeStyle = `rgba(120,140,170,${0.45 * g.cloudDark})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const d of g.rain) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len*0.18, d.y - d.len); }
+    ctx.stroke();
+  }
+
+  function drawLightning() {
+    const g = game;
+    for (const lb of g.lightning) {
+      const a = Math.max(0, lb.life / lb.life0);
+      const stroke = () => { ctx.beginPath(); ctx.moveTo(lb.segs[0].x, lb.segs[0].y); for (let i = 1; i < lb.segs.length; i++) ctx.lineTo(lb.segs[i].x, lb.segs[i].y); ctx.stroke(); };
+      ctx.strokeStyle = `rgba(120,180,255,${a})`; ctx.lineWidth = 4*a + 1; stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 2*a + 0.5; stroke();
+    }
+  }
+
   // Fire turret i (using its own weapon) at target e.
   function fireTurret(i, e) {
     const g = game, p = g.p, L = turretLayout();
@@ -1178,7 +1353,7 @@
 
     } else if (w === 'laser' || w === 'railgun') {
       const cfg = WEAPONS[w], isRail = w === 'railgun';
-      const reach = p.range * 1.05, halfW = cfg.halfW, dmg = p.damage * cfg.dmgMult;
+      const reach = p.range * g.weatherRange * 1.05, halfW = cfg.halfW, dmg = p.damage * cfg.dmgMult;
       for (const en of g.enemies) {           // hitscan — damage everything along the ray
         if (en.dead) continue;
         const t = (en.x - ox)*dx + (en.y - oy)*dy;
@@ -1194,7 +1369,7 @@
         w: halfW, life: isRail ? 0.18 : 0.10, life0: isRail ? 0.18 : 0.10, color: cfg.tip });
 
     } else if (w === 'flak') {
-      const cfg = WEAPONS.flak, sp = p.projSpeed * 0.85, reach = p.range * cfg.rangeMult;
+      const cfg = WEAPONS.flak, sp = p.projSpeed * 0.85, reach = p.range * g.weatherRange * cfg.rangeMult;
       for (let k = 0; k < cfg.pellets; k++) {
         const a = ang + (Math.random() - 0.5) * cfg.spread;
         g.projectiles.push({ x: ox, y: oy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
@@ -1329,10 +1504,14 @@
     ctx.save();
     ctx.translate(sx, sy);
 
-    // range ring
+    // storm overcast tint + drifting clouds behind the action
+    if (g.cloudDark > 0.01) { ctx.fillStyle = `rgba(22,30,48,${0.16 * g.cloudDark})`; ctx.fillRect(-sx-20, -sy-20, W+40, H+40); }
+    drawClouds();
+
+    // range ring (shrinks during a storm)
     ctx.strokeStyle = 'rgba(11,61,145,0.12)';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(g.bx, g.by, p.range, 0, 6.2832); ctx.stroke();
+    ctx.beginPath(); ctx.arc(g.bx, g.by, p.range * g.weatherRange, 0, 6.2832); ctx.stroke();
 
     // cores
     for (const c of g.cores) drawCore(c);
@@ -1355,6 +1534,9 @@
     // laser/railgun beams and explosion shockwaves
     drawBeams();
 
+    // storm lightning bolts (over the enemies they strike)
+    drawLightning();
+
     // particles
     for (const pa of g.particles) {
       ctx.globalAlpha = Math.max(0, Math.min(1, pa.life * 2.5));
@@ -1370,7 +1552,12 @@
     drawTruck();
     drawBase(g.bx, g.by, p.baseHP / p.baseMax, g.flashBase);
 
+    drawRain(); // falls in front of the whole field
+
     ctx.restore();
+
+    // brief white flash on a lightning strike (over the field, under the HUD)
+    if (g.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${0.5 * g.flash})`; ctx.fillRect(0, 0, W, H); }
   }
 
   function drawEnemy(e) {
