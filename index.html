@@ -544,7 +544,34 @@
       apply:p=>{ p.shieldRegen += 6; } },
     { name:'Hardened Emitters', tag:'Shield', desc:'Shield recharges 30% sooner after a hit.',
       apply:p=>{ p.shieldDelay = Math.max(0.8, p.shieldDelay * 0.7); } },
+    { name:'Missile Launcher', tag:'Weapon', desc:'Refit a turret to fire homing missiles that explode for splash damage.',
+      apply:p=>refitTurret(p, 'missile') },
+    { name:'Laser Emitter', tag:'Weapon', desc:'Refit a turret to a fast instant-hit beam that pierces every enemy in line.',
+      apply:p=>refitTurret(p, 'laser') },
+    { name:'Railgun', tag:'Weapon', desc:'Refit a turret to a slow, pierce-all slug that hits hard. Great vs tanks.',
+      apply:p=>refitTurret(p, 'railgun') },
+    { name:'Flak Cannon', tag:'Weapon', desc:'Refit a turret to a short-range scatter of pellets. Great vs swarms.',
+      apply:p=>refitTurret(p, 'flak') },
   ];
+
+  // ───────────────────────── Weapon types (per-turret) ─────────────────────────
+  // Each turret runs one weapon on its own cadence (= base fireInterval × fireMult).
+  const WEAPONS = {
+    cannon:  { name:'Cannon',  fireMult:1.0,  tip:null },
+    missile: { name:'Missile', fireMult:2.0,  dmgMult:2.4, speed:230, splash:46, tip:'#FC3D21' },
+    laser:   { name:'Laser',   fireMult:0.45, dmgMult:0.55, halfW:4,  tip:'#37A6E6' },
+    railgun: { name:'Railgun', fireMult:3.2,  dmgMult:4.6, halfW:7,  tip:'#0B3D91' },
+    flak:    { name:'Flak',    fireMult:1.5,  dmgMult:0.5, pellets:5, spread:0.55, rangeMult:0.5, tip:'#1E7F4F' },
+  };
+
+  // Convert one turret to a weapon — preferring a basic cannon, else any different turret.
+  function refitTurret(p, weaponId) {
+    while (p.turretWeapons.length < p.multishot) p.turretWeapons.push('cannon');
+    let idx = p.turretWeapons.indexOf('cannon');
+    if (idx === -1) idx = p.turretWeapons.findIndex(w => w !== weaponId);
+    if (idx === -1) idx = 0;
+    p.turretWeapons[idx] = weaponId;
+  }
 
   // ───────────────────────── DOM ─────────────────────────
   const $ = id => document.getElementById(id);
@@ -602,6 +629,7 @@
     }
     p.baseHP = p.baseMax;
     p.shield = p.shieldMax;
+    p.turretWeapons = new Array(p.multishot).fill('cannon'); // every turret starts as a cannon
     return p;
   }
 
@@ -616,7 +644,7 @@
       score: 0, kills: 0, coresCollected: 0, salvageRun: 0,
       wave: 0,
       spawnQueue: [], spawnTimer: 0, betweenWaves: 1.0,
-      fireTimer: 0,
+      turretTimers: [], beams: [],
       research: 0, researchNeed: 120, pendingPicks: 0,
       flashBase: 0, shake: 0, shieldCooldown: 0, shieldFlash: 0,
       diag: Math.hypot(W, H),
@@ -732,21 +760,34 @@
     acquireTargets();
     aimBarrels(dt);
 
-    // turret firing — only at locked targets within range; cadence holds until a shot lands
-    g.fireTimer -= dt;
-    if (g.fireTimer <= 0 && g.locks.length > 0) {
-      if (fireVolley()) g.fireTimer = p.fireInterval;
+    // firing — each turret runs its own weapon on its own cadence, against its locked target
+    ensureLoadout();
+    for (let i = 0; i < p.multishot; i++) {
+      if (g.turretTimers[i] === undefined) g.turretTimers[i] = 0;
+      g.turretTimers[i] -= dt;
+      if (g.turretTimers[i] > 0) continue;
+      const e = g.locks[i];
+      if (!e || e.dead) continue;
+      const w = WEAPONS[p.turretWeapons[i]] || WEAPONS.cannon;
+      const wRange = p.range * (w.rangeMult || 1);
+      if (Math.hypot(e.x - g.bx, e.y - g.by) > wRange) continue; // pre-targeted, not yet in range
+      fireTurret(i, e);
+      g.turretTimers[i] = p.fireInterval * w.fireMult;
     }
 
     // projectiles
     for (const pr of g.projectiles) {
+      if (pr.missile) steerMissile(pr, dt); // homing
       pr.x += pr.vx * dt; pr.y += pr.vy * dt;
       pr.life -= dt;
-      if (pr.x < -20 || pr.x > W+20 || pr.y < -20 || pr.y > H+20 || pr.life <= 0) pr.dead = true;
-      else {
+      if (pr.x < -30 || pr.x > W+30 || pr.y < -30 || pr.y > H+30 || pr.life <= 0) {
+        if (pr.missile && pr.life <= 0) explode(pr.x, pr.y, pr.splash, pr.dmg);
+        pr.dead = true;
+      } else {
         for (const e of g.enemies) {
           if (e.dead || pr.hit.has(e)) continue;
           if (Math.hypot(e.x-pr.x, e.y-pr.y) < e.r + pr.r) {
+            if (pr.missile) { explode(pr.x, pr.y, pr.splash, pr.dmg); pr.dead = true; break; }
             const crit = Math.random() < p.critChance;
             e.hp -= pr.dmg * (crit ? 3 : 1);
             pr.hit.add(e);
@@ -758,6 +799,10 @@
       }
     }
     g.projectiles = g.projectiles.filter(pr => !pr.dead);
+
+    // beam/explosion effects fade out
+    for (const b of g.beams) b.life -= dt;
+    g.beams = g.beams.filter(b => b.life > 0);
 
     // cores streak to the base as feedback only (salvage already banked on the kill)
     for (const c of g.cores) {
@@ -847,25 +892,94 @@
     }
   }
 
-  function fireVolley() {
-    const g = game, p = g.p;
-    const L = turretLayout();
-    let fired = false;
-    for (let i = 0; i < g.locks.length; i++) {
-      const e = g.locks[i];
-      if (!e || e.dead) continue;
-      if (Math.hypot(e.x - g.bx, e.y - g.by) > p.range) continue; // pre-targeted but not yet in range
-      const ox = g.bx + (L.xs[i] || 0), oy = g.by + L.muzzleY;    // each turret fires from its own muzzle
-      const dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy) || 1;
-      g.projectiles.push({
-        x: ox, y: oy,
-        vx: (dx/d) * p.projSpeed, vy: (dy/d) * p.projSpeed,
-        r: 3, dmg: p.damage, pierce: p.pierce, life: 2.2,
-        hit: new Set(),
-      });
-      fired = true;
+  // keep the per-turret weapon list sized to the turret count
+  function ensureLoadout() {
+    const p = game.p, tw = p.turretWeapons;
+    while (tw.length < p.multishot) tw.push('cannon');
+    if (tw.length > p.multishot) tw.length = p.multishot;
+  }
+
+  function nearestEnemyTo(x, y) {
+    let best = null, bd = Infinity;
+    for (const e of game.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < bd) { bd = d; best = e; }
     }
-    return fired;
+    return best;
+  }
+
+  function steerMissile(pr, dt) {
+    let tgt = pr.target;
+    if (!tgt || tgt.dead) tgt = pr.target = nearestEnemyTo(pr.x, pr.y);
+    if (!tgt) return;
+    const want = Math.atan2(tgt.y - pr.y, tgt.x - pr.x);
+    const cur = Math.atan2(pr.vy, pr.vx);
+    let da = want - cur;
+    while (da > Math.PI) da -= 2*Math.PI;
+    while (da < -Math.PI) da += 2*Math.PI;
+    const na = cur + Math.max(-5*dt, Math.min(5*dt, da)); // limited turn rate
+    const sp = Math.hypot(pr.vx, pr.vy);
+    pr.vx = Math.cos(na) * sp; pr.vy = Math.sin(na) * sp;
+  }
+
+  // Area-of-effect blast (missiles): damages every enemy within radius + a shockwave ring.
+  function explode(x, y, radius, dmg) {
+    const g = game;
+    spawnBurst(x, y, '#FC3D21', 14);
+    g.beams.push({ ring: true, x, y, r: radius, life: 0.26, life0: 0.26, color: '#FC3D21' });
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      if (Math.hypot(e.x - x, e.y - y) <= radius + e.r) {
+        e.hp -= dmg;
+        if (e.hp <= 0) killEnemy(e);
+      }
+    }
+  }
+
+  // Fire turret i (using its own weapon) at target e.
+  function fireTurret(i, e) {
+    const g = game, p = g.p, L = turretLayout();
+    const ox = g.bx + (L.xs[i] || 0), oy = g.by + L.muzzleY;
+    const w = p.turretWeapons[i] || 'cannon';
+    const ang = Math.atan2(e.y - oy, e.x - ox);
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+
+    if (w === 'missile') {
+      g.projectiles.push({ x: ox, y: oy, vx: dx*WEAPONS.missile.speed, vy: dy*WEAPONS.missile.speed,
+        r: 4, dmg: p.damage * WEAPONS.missile.dmgMult, pierce: 0, life: 3.5, hit: new Set(),
+        missile: true, target: e, splash: WEAPONS.missile.splash });
+
+    } else if (w === 'laser' || w === 'railgun') {
+      const cfg = WEAPONS[w], isRail = w === 'railgun';
+      const reach = p.range * 1.05, halfW = cfg.halfW, dmg = p.damage * cfg.dmgMult;
+      for (const en of g.enemies) {           // hitscan — damage everything along the ray
+        if (en.dead) continue;
+        const t = (en.x - ox)*dx + (en.y - oy)*dy;
+        if (t < 0 || t > reach) continue;
+        const px = ox + dx*t, py = oy + dy*t;
+        if (Math.hypot(en.x - px, en.y - py) <= en.r + halfW) {
+          const crit = Math.random() < p.critChance;
+          en.hp -= dmg * (crit ? 3 : 1);
+          spawnBurst(px, py, crit ? '#FC3D21' : cfg.tip, 2);
+          if (en.hp <= 0) killEnemy(en);
+        }
+      }
+      g.beams.push({ x1: ox, y1: oy, x2: ox + dx*reach, y2: oy + dy*reach,
+        w: halfW, life: isRail ? 0.18 : 0.10, life0: isRail ? 0.18 : 0.10, color: cfg.tip });
+
+    } else if (w === 'flak') {
+      const cfg = WEAPONS.flak, sp = p.projSpeed * 0.85, reach = p.range * cfg.rangeMult;
+      for (let k = 0; k < cfg.pellets; k++) {
+        const a = ang + (Math.random() - 0.5) * cfg.spread;
+        g.projectiles.push({ x: ox, y: oy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+          r: 2.5, dmg: p.damage * cfg.dmgMult, pierce: 0, life: reach / sp, hit: new Set() });
+      }
+
+    } else { // cannon
+      g.projectiles.push({ x: ox, y: oy, vx: dx*p.projSpeed, vy: dy*p.projSpeed,
+        r: 3, dmg: p.damage, pierce: p.pierce, life: 2.2, hit: new Set() });
+    }
   }
 
   function killEnemy(e) {
@@ -995,6 +1109,9 @@
       ctx.fillStyle = '#FC3D21';
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, 6.2832); ctx.fill();
     }
+
+    // laser/railgun beams and explosion shockwaves
+    drawBeams();
 
     // particles
     for (const pa of g.particles) {
@@ -1146,15 +1263,57 @@
     return { hw, sr, blen, bthick, n, stacked, xs, platformTop, muzzleY: platformTop - sr };
   }
 
-  function drawTurretUnit(tx, ty, angle, sr, blen, bthick, ink) {
+  function drawTurretUnit(tx, ty, angle, sr, blen, bthick, ink, weapon) {
+    // each weapon shapes its barrel differently and carries a coloured muzzle tip
+    let bl = blen, bt = bthick;
+    if (weapon === 'laser')        { bt = Math.max(1.4, bthick*0.6); bl = blen*1.3; }
+    else if (weapon === 'railgun') { bt = bthick*1.5;               bl = blen*1.55; }
+    else if (weapon === 'missile') { bt = bthick*1.8;               bl = blen*0.7; }
+    else if (weapon === 'flak')    { bt = bthick*1.5;               bl = blen*0.62; }
+    const tip = weapon && WEAPONS[weapon] ? WEAPONS[weapon].tip : null;
+
     ctx.save();
     ctx.translate(tx, ty);
     ctx.fillStyle = ink;
+    // pedestal dropping into the platform body so edge turrets stay planted, not floating
+    ctx.beginPath();
+    ctx.moveTo(-sr*0.65, -1); ctx.lineTo(sr*0.65, -1);
+    ctx.lineTo(sr*0.9, 26);   ctx.lineTo(-sr*0.9, 26);
+    ctx.closePath(); ctx.fill();
     ctx.save(); ctx.rotate(angle);
-    ctx.fillRect(-bthick/2, -(sr + blen), bthick, blen + sr); // barrel
+    ctx.fillRect(-bt/2, -(sr + bl), bt, bl + sr);                 // barrel
+    if (weapon === 'flak') {                                       // flared muzzle
+      ctx.beginPath();
+      ctx.moveTo(-bt/2, -(sr + bl)); ctx.lineTo(-bt, -(sr + bl) - 3);
+      ctx.lineTo(bt, -(sr + bl) - 3); ctx.lineTo(bt/2, -(sr + bl)); ctx.closePath(); ctx.fill();
+    } else if (weapon === 'missile') {                            // boxy launcher head
+      ctx.fillRect(-bt*0.75, -(sr + bl) - 2, bt*1.5, 4);
+    }
+    if (tip) { ctx.fillStyle = tip; ctx.beginPath(); ctx.arc(0, -(sr + bl), bt*0.55 + 0.6, 0, 6.2832); ctx.fill(); }
     ctx.restore();
-    ctx.beginPath(); ctx.arc(0, 0, sr, Math.PI, 0); ctx.fill(); // dome
+    ctx.fillStyle = ink;
+    ctx.beginPath(); ctx.arc(0, 0, sr, Math.PI, 0); ctx.fill();   // dome
     ctx.restore();
+  }
+
+  // Laser/railgun beams (fading lines) and explosion shockwaves (expanding rings).
+  function drawBeams() {
+    const g = game;
+    for (const b of g.beams) {
+      const a = Math.max(0, Math.min(1, b.life / b.life0));
+      if (b.ring) {
+        ctx.globalAlpha = a * 0.7;
+        ctx.strokeStyle = b.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r * (1 + (1 - a) * 0.7), 0, 6.2832); ctx.stroke();
+      } else {
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = b.color; ctx.lineWidth = b.w * 1.6 * a + 1;
+        ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(1, b.w * 0.6 * a);
+        ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Pre-target aim lines: a subtle dashed line from each turret to its locked target,
@@ -1220,7 +1379,8 @@
     // turret units mounted on the platform, each aimed at its locked target
     for (let i = 0; i < L.n; i++) {
       const ang = (game.barrelAngles && game.barrelAngles[i] !== undefined) ? game.barrelAngles[i] : 0;
-      drawTurretUnit(L.xs[i], L.platformTop, ang, L.sr, L.blen, L.bthick, ink);
+      const weapon = (p.turretWeapons && p.turretWeapons[i]) || 'cannon';
+      drawTurretUnit(L.xs[i], L.platformTop, ang, L.sr, L.blen, L.bthick, ink, weapon);
     }
 
     // integrity arc — the one bright readout on the silhouette
