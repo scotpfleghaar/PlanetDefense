@@ -161,6 +161,8 @@
       margin-top: 0.6rem;
     }
     .btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
+    .btn-ghost.on { border-color: var(--blue); color: #fff; background: var(--blue); }
+    .btn-ghost.on:hover { background: #0d49ad; }
     .btn-ghost:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }
 
     /* ── Game (fullscreen) ── */
@@ -355,6 +357,7 @@
 
       <button id="launch-btn" class="btn btn-primary">Launch run</button>
       <button id="meta-btn" class="btn btn-gold">Salvage bay</button>
+      <button id="autopick-btn" class="btn-ghost">Auto-pick upgrades: Off</button>
       <button id="how-btn" class="btn-ghost">How it works</button>
     </div>
   </div>
@@ -475,7 +478,7 @@
 
   // ───────────────────────── Persistence ─────────────────────────
   const STORE = 'planet_defense_v1';
-  const defaultSave = () => ({ salvage: 0, best: 0, runs: 0, deepestWave: 0, meta: {} });
+  const defaultSave = () => ({ salvage: 0, best: 0, runs: 0, deepestWave: 0, meta: {}, autoRandom: false });
   function loadSave() {
     try { return Object.assign(defaultSave(), JSON.parse(localStorage.getItem(STORE)) || {}); }
     catch { return defaultSave(); }
@@ -1450,6 +1453,15 @@
   // ───────────────────────── Upgrade flow ─────────────────────────
   const upgradeModal = $('upgrade-modal');
   function openUpgrade() {
+    // auto-pick mode: instantly apply a random offered card, no modal / no pause
+    if (save.autoRandom) {
+      while (game.pendingPicks > 0) {
+        const picks = pick3();
+        picks[Math.floor(Math.random() * picks.length)].apply(game.p);
+        game.pendingPicks--;
+      }
+      return; // stays in 'playing'
+    }
     runningState = 'upgrading';
     const picks = pick3();
     const body = $('upgrade-body');
@@ -1532,7 +1544,19 @@
     $('t-best').textContent = save.best.toLocaleString();
     $('t-runs').textContent = save.runs;
     $('t-wave').textContent = save.deepestWave;
+    syncAutopick();
   }
+
+  const autopickBtn = $('autopick-btn');
+  function syncAutopick() {
+    autopickBtn.textContent = 'Auto-pick upgrades: ' + (save.autoRandom ? 'On' : 'Off');
+    autopickBtn.classList.toggle('on', !!save.autoRandom);
+  }
+  autopickBtn.addEventListener('click', () => {
+    save.autoRandom = !save.autoRandom;
+    persist();
+    syncAutopick();
+  });
 
   $('launch-btn').addEventListener('click', startRun);
   $('meta-btn').addEventListener('click', openMeta);
