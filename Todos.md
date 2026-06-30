@@ -2,3 +2,4 @@
 // Extremely rare cards that are insane - reset research buff, reset enemey speed - reset other buffs.
 // I don't know why. But I love the idea of a little tiny space truck, blak siluote traveling randomly on the floor - you know - give it some life. 
 // not sure if its possible. But would be cool if we randomize enemies and promote the ones that kill the base to make the harder next time - Just a cool idea.
+// thie higher the levels enemies should get attributes - like shields
