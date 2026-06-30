@@ -924,17 +924,22 @@
     g.t += dt;
   }
 
-  // Assign one target per turret, nearest first. If there are fewer enemies than
-  // turrets, the extra turrets wrap around and concentrate fire on the nearest ones
-  // (so no turret sits idle while a target is alive). Pre-targets even out of range.
+  // Assign one target per turret, prioritising enemies actually in range:
+  //  • spread turrets across the in-range targets (a separate target each),
+  //  • if there are more turrets than in-range targets, the extras wrap around and
+  //    concentrate on them (so when only one is in range, all turrets hit it),
+  //  • only when nothing is in range do turrets fall back to pre-targeting the
+  //    nearest approaching enemies (aim lines, holding fire until they arrive).
   function acquireTargets() {
-    const g = game, n = g.p.multishot;
+    const g = game, n = g.p.multishot, range = g.p.range;
     const sorted = g.enemies
       .map(e => ({ e, d: Math.hypot(e.x - g.bx, e.y - g.by) }))
-      .sort((a, b) => a.d - b.d)
-      .map(o => o.e);
+      .sort((a, b) => a.d - b.d);
+    const inRange = [], outRange = [];
+    for (const o of sorted) (o.d <= range ? inRange : outRange).push(o.e);
+    const pref = inRange.length ? inRange : outRange;
     const locks = [];
-    if (sorted.length) for (let i = 0; i < n; i++) locks.push(sorted[i % sorted.length]);
+    if (pref.length) for (let i = 0; i < n; i++) locks.push(pref[i % pref.length]);
     g.locks = locks;
   }
 
