@@ -803,14 +803,10 @@
   // no target ease back to their resting fan angle.
   function aimBarrels(dt) {
     const g = game, n = g.p.multishot;
-    const spread = Math.min((n - 1) * 0.30, 1.5);
-    if (g.barrelAngles.length !== n) {
-      g.barrelAngles = [];
-      for (let i = 0; i < n; i++) g.barrelAngles.push(n === 1 ? 0 : (i / (n - 1) - 0.5) * spread);
-    }
+    if (g.barrelAngles.length !== n) g.barrelAngles = new Array(n).fill(0);
     const k = Math.min(1, dt * 12);
     for (let i = 0; i < n; i++) {
-      let desired = n === 1 ? 0 : (i / (n - 1) - 0.5) * spread; // rest
+      let desired = 0; // idle turrets point straight up
       const tgt = g.locks[i];
       if (tgt) {
         let rot = Math.atan2(tgt.y - g.by, tgt.x - g.bx) + Math.PI / 2;
@@ -824,16 +820,18 @@
 
   function fireVolley() {
     const g = game, p = g.p;
-    const ox = g.bx, oy = g.by - 18;
+    const L = turretLayout();
     let fired = false;
-    for (const e of g.locks) {
+    for (let i = 0; i < g.locks.length; i++) {
+      const e = g.locks[i];
       if (!e || e.dead) continue;
       if (Math.hypot(e.x - g.bx, e.y - g.by) > p.range) continue; // pre-targeted but not yet in range
+      const ox = g.bx + (L.xs[i] || 0), oy = g.by + L.muzzleY;    // each turret fires from its own muzzle
       const dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy) || 1;
       g.projectiles.push({
         x: ox, y: oy,
         vx: (dx/d) * p.projSpeed, vy: (dy/d) * p.projSpeed,
-        r: 3.5, dmg: p.damage, pierce: p.pierce, life: 2.2,
+        r: 3, dmg: p.damage, pierce: p.pierce, life: 2.2,
         hit: new Set(),
       });
       fired = true;
@@ -1064,19 +1062,55 @@
     ridgePath(g.hill); ctx.fill();
   }
 
-  // Pre-target aim lines: a subtle dashed line from the turret to each locked target,
+  // Layout for the turret units. Up to ten sit adjacently across the platform; beyond
+  // ten they stack at the centre (barrels fanning from one spot, as the base did before).
+  function turretLayout() {
+    const p = game.p;
+    const hw     = Math.min(40, 20 + Math.max(0, p.baseMax - 100) * 0.075); // platform half-width ← integrity
+    const sr     = 4.5;                                                      // small turret dome radius
+    const blen   = Math.min(22, 9 + Math.max(0, p.range - 240) * 0.04);     // barrel length ← range
+    const bthick = Math.min(4.5, 1.8 + Math.max(0, p.damage - 3) * 0.18);   // barrel girth ← damage
+    const n      = Math.max(1, p.multishot);
+    const stacked = n > 10;
+    const platformTop = -4;
+    const xs = [];
+    if (stacked) {
+      for (let i = 0; i < n; i++) xs.push(0);                 // all at centre — stacked into one
+    } else {
+      let spacing = sr * 2.2;
+      const maxSpan = hw * 1.7;
+      if (n > 1 && (n - 1) * spacing > maxSpan) spacing = maxSpan / (n - 1);
+      for (let i = 0; i < n; i++) xs.push((i - (n - 1) / 2) * spacing); // centred row
+    }
+    return { hw, sr, blen, bthick, n, stacked, xs, platformTop, muzzleY: platformTop - sr };
+  }
+
+  function drawTurretUnit(tx, ty, angle, sr, blen, bthick, ink) {
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.fillStyle = ink;
+    ctx.save(); ctx.rotate(angle);
+    ctx.fillRect(-bthick/2, -(sr + blen), bthick, blen + sr); // barrel
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, sr, Math.PI, 0); ctx.fill(); // dome
+    ctx.restore();
+  }
+
+  // Pre-target aim lines: a subtle dashed line from each turret to its locked target,
   // fading out with distance. Faint blue while the target is still out of range,
   // vermilion with a reticle once it is in range and being fired upon.
   function drawTargeting() {
     const g = game;
     if (!g.locks || !g.locks.length) return;
-    const ox = g.bx, oy = g.by - 10;
+    const L = turretLayout();
     ctx.save();
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 5]);
     ctx.lineDashOffset = -(g.t * 22) % 8;
-    for (const e of g.locks) {
+    for (let i = 0; i < g.locks.length; i++) {
+      const e = g.locks[i];
       if (!e || e.dead) continue;
+      const ox = g.bx + (L.xs[i] || 0), oy = g.by + L.muzzleY;
       const inRange = Math.hypot(e.x - g.bx, e.y - g.by) <= g.p.range;
       const tint = inRange ? '252,61,33' : '11,61,145';
       const grad = ctx.createLinearGradient(ox, oy, e.x, e.y);
@@ -1097,36 +1131,19 @@
   function drawBase(x, y, hpFrac, flash) {
     const p = game.p;
     const ink = flash > 0 ? '#FC3D21' : '#0A0E14';
-    // silhouette geometry is derived from the build, so the base visibly evolves:
-    const hw      = Math.min(46, 22 + Math.max(0, p.baseMax - 100) * 0.085); // platform width ← integrity
-    const domeR   = Math.min(14, 9 + Math.max(0, p.baseMax - 100) * 0.02);
-    const barrels = Math.max(1, Math.min(7, p.multishot));                    // barrel count ← multishot
-    const blen    = Math.min(32, 13 + Math.max(0, p.range - 240) * 0.05);     // barrel length ← range
-    const bthick  = Math.min(6.5, 2.6 + Math.max(0, p.damage - 3) * 0.22);    // barrel girth ← damage
-    const arcR    = hw + 5;
-    const shR     = hw + 24;
+    const L = turretLayout();
+    const hw = L.hw;
+    const arcR = hw + 6;
+    const shR  = hw + 22;
 
     ctx.save();
     ctx.translate(x, y);
 
-    // turret barrels — one per multishot level, each aimed at its locked target
+    // platform silhouette
     ctx.fillStyle = ink;
-    const spread = Math.min((barrels - 1) * 0.30, 1.5);
-    for (let i = 0; i < barrels; i++) {
-      const rest = barrels === 1 ? 0 : (i / (barrels - 1) - 0.5) * spread;
-      const ang = (game.barrelAngles && game.barrelAngles[i] !== undefined) ? game.barrelAngles[i] : rest;
-      ctx.save();
-      ctx.translate(0, -6);
-      ctx.rotate(ang);
-      ctx.fillRect(-bthick/2, -(domeR + blen), bthick, blen + domeR);
-      ctx.restore();
-    }
-
-    // platform + dome silhouette
     ctx.beginPath();
-    ctx.moveTo(-hw, 22); ctx.lineTo(-hw*0.7, -6); ctx.lineTo(hw*0.7, -6); ctx.lineTo(hw, 22);
+    ctx.moveTo(-hw, 20); ctx.lineTo(-hw*0.72, -4); ctx.lineTo(hw*0.72, -4); ctx.lineTo(hw, 20);
     ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -6, domeR, Math.PI, 0); ctx.fill();
 
     // armour plating notches emerge as the hull is reinforced
     if (p.baseMax > 120) {
@@ -1135,8 +1152,14 @@
       const plates = Math.min(4, Math.floor((p.baseMax - 100) / 30));
       for (let i = 1; i <= plates; i++) {
         const px = -hw + (hw * 2) * (i / (plates + 1));
-        ctx.beginPath(); ctx.moveTo(px, -3); ctx.lineTo(px, 20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px, -2); ctx.lineTo(px, 18); ctx.stroke();
       }
+    }
+
+    // turret units mounted on the platform, each aimed at its locked target
+    for (let i = 0; i < L.n; i++) {
+      const ang = (game.barrelAngles && game.barrelAngles[i] !== undefined) ? game.barrelAngles[i] : 0;
+      drawTurretUnit(L.xs[i], L.platformTop, ang, L.sr, L.blen, L.bthick, ink);
     }
 
     // integrity arc — the one bright readout on the silhouette
