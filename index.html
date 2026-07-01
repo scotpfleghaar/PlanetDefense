@@ -757,26 +757,42 @@
   const ENEMY_DEFS = {
     drone:    { hp:3,   r:9,  speed:42,  pts:10,  dmg:8,  color:'#0B3D91' },
     swarm:    { hp:1,   r:6,  speed:78,  pts:6,   dmg:4,  color:'#1E7F4F' },
+    rock:     { hp:12,  r:15, speed:26,  pts:30,  dmg:18, color:'#6E675E', rock:true, splits:2, child:'pebble' }, // tumbling asteroid, cracks into pebbles
+    pebble:   { hp:2,   r:6,  speed:52,  pts:5,   dmg:5,  color:'#847B70', rock:true }, // asteroid fragment
     hulk:     { hp:22,  r:19, speed:22,  pts:55,  dmg:26, color:'#5B6471' },
     sprinter: { hp:5,   r:8,  speed:120, pts:18,  dmg:10, color:'#0E7C8B' }, // very fast, fragile
+    comet:    { hp:6,   r:9,  speed:100, pts:28,  dmg:12, color:'#37A6E6', rock:true, comet:true }, // fast ice chunk with an ion tail
     brute:    { hp:60,  r:26, speed:15,  pts:120, dmg:44, color:'#3A4250' }, // mega-tank
     splitter: { hp:14,  r:15, speed:34,  pts:40,  dmg:14, color:'#7A3D91', splits:2, child:'swarm' },
     weaver:   { hp:8,   r:10, speed:62,  pts:25,  dmg:10, color:'#C98A00', weave:70 }, // zig-zags
     armored:  { hp:26,  r:16, speed:26,  pts:70,  dmg:22, color:'#5B6471', armor:0.5 }, // halves damage
     carrier:  { hp:10,  r:14, speed:30,  pts:35,  dmg:12, color:'#FC3D21', carrier:true },
+    // ── high-wave roster ──
+    hive:     { hp:70,  r:24, speed:14,  pts:150, dmg:40, color:'#1E7F4F', spawner:{ interval:3.2, child:'swarm', brood:8 } }, // births swarm darts mid-flight
+    phantom:  { hp:16,  r:11, speed:48,  pts:60,  dmg:16, color:'#7FA8E0', cloak:{ solid:1.8, faded:1.4 } }, // phases out — untargetable while faded
+    tender:   { hp:20,  r:13, speed:28,  pts:80,  dmg:12, color:'#5B6471', healer:{ interval:1.6, amount:3, radius:120 } }, // pulse-heals nearby enemies
+    blinker:  { hp:12,  r:10, speed:20,  pts:65,  dmg:18, color:'#7A3D91', blink:{ interval:2.2, dist:110 } }, // teleports toward the base in hops
+    titan:    { hp:220, r:34, speed:10,  pts:400, dmg:80, color:'#20262F', armor:0.35, splits:2, child:'brute' }, // mini-boss; breaks into two brutes
   };
 
-  // Roster introduced one new type every 3 waves. Spawn picker draws (weighted) from
-  // whatever is unlocked at the current wave; tougher/rarer types carry lower weight.
+  // Roster introduces a new type every couple of waves. Spawn picker draws (weighted)
+  // from whatever is unlocked at the current wave; tougher/rarer types carry lower weight.
   const ENEMY_ROSTER = [
     { type:'drone',    unlock:1,  weight:1.00 },
     { type:'swarm',    unlock:1,  weight:0.50 },
+    { type:'rock',     unlock:2,  weight:0.60 },
     { type:'hulk',     unlock:3,  weight:0.55 },
     { type:'sprinter', unlock:6,  weight:0.45 },
+    { type:'comet',    unlock:8,  weight:0.40 },
     { type:'brute',    unlock:9,  weight:0.28 },
     { type:'splitter', unlock:12, weight:0.38 },
     { type:'weaver',   unlock:15, weight:0.42 },
     { type:'armored',  unlock:18, weight:0.35 },
+    { type:'hive',     unlock:20, weight:0.30 },
+    { type:'phantom',  unlock:22, weight:0.40 },
+    { type:'tender',   unlock:25, weight:0.32 },
+    { type:'blinker',  unlock:28, weight:0.38 },
+    { type:'titan',    unlock:32, weight:0.15 },
   ];
 
   function pickEnemyType(w) {
@@ -793,15 +809,34 @@
 
   function buildEnemy(type, hpMult, speedMult, x, y) {
     const def = ENEMY_DEFS[type];
-    return {
+    const e = {
       type, x, y, r: def.r,
       hp: def.hp * hpMult, maxhp: def.hp * hpMult,
       speed: def.speed * speedMult,
       pts: def.pts, dmg: def.dmg, color: def.color,
       carrier: !!def.carrier, armor: def.armor || 0, weave: def.weave || 0,
       splits: def.splits || 0, child: def.child || null,
+      rock: !!def.rock, comet: !!def.comet,
       hpMult, speedMult, phase: Math.random() * 6.28,
     };
+    if (def.rock) { // each rock gets its own irregular silhouette, tumble rate and craters
+      const n = 7 + Math.floor(Math.random() * 4);
+      e.verts = [];
+      for (let i = 0; i < n; i++)
+        e.verts.push({ a: (i / n) * 6.2832 + (Math.random() - 0.5) * 0.35, k: 0.68 + Math.random() * 0.44 });
+      e.spin = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.55);
+      e.craters = [];
+      if (!def.comet) for (let i = 0, nc = 2 + Math.floor(Math.random() * 2); i < nc; i++) {
+        const a = Math.random() * 6.2832, d = Math.random() * e.r * 0.5;
+        e.craters.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, r: e.r * (0.12 + Math.random() * 0.14) });
+      }
+    }
+    // high-wave behaviours (timers staggered so groups don't act in lockstep)
+    if (def.spawner) { e.spawner = def.spawner; e.spawnT = def.spawner.interval * (0.5 + Math.random() * 0.7); e.brood = def.spawner.brood; e.hatch = 0; }
+    if (def.cloak)   { e.cloak = def.cloak; e.solid = true; e.phased = false; e.fade = 1; e.cloakT = def.cloak.solid * (0.4 + Math.random() * 0.8); }
+    if (def.healer)  { e.healer = def.healer; e.healT = def.healer.interval * (0.5 + Math.random() * 0.8); e.pulse = 0; }
+    if (def.blink)   { e.blink = def.blink; e.blinkT = def.blink.interval * (0.7 + Math.random() * 0.6); e.blinkFx = 0; }
+    return e;
   }
 
   function spawnEnemy(spec) {
@@ -844,6 +879,56 @@
       e.x += vx * dt;
       e.y += vy * dt;
       e.phase += dt * 3;
+
+      // ── high-wave behaviours ──
+      if (e.spawner && e.brood > 0) {          // hive births a child from its rear hatch
+        e.spawnT -= dt;
+        if (e.spawnT <= 0) {
+          e.spawnT = e.spawner.interval;
+          e.brood--;
+          e.hatch = 1;
+          const c = buildEnemy(e.spawner.child, e.hpMult, e.speedMult,
+                               e.x + (Math.random() - 0.5) * e.r, e.y + e.r * 0.8);
+          g.enemies.push(c);
+          spawnBurst(e.x, e.y + e.r * 0.8, c.color, 3);
+        }
+      }
+      if (e.hatch) e.hatch = Math.max(0, e.hatch - dt * 2.5);
+      if (e.cloak) {                           // phantom toggles between solid and faded
+        e.cloakT -= dt;
+        if (e.cloakT <= 0) { e.solid = !e.solid; e.cloakT = e.solid ? e.cloak.solid : e.cloak.faded; }
+        e.phased = !e.solid;
+        e.fade += ((e.solid ? 1 : 0.22) - e.fade) * Math.min(1, dt * 6);
+      }
+      if (e.healer) {                          // tender pulse-heals damaged neighbours
+        e.healT -= dt;
+        if (e.healT <= 0) {
+          e.healT = e.healer.interval;
+          for (const o of g.enemies) {
+            if (o === e || o.dead || o.hp >= o.maxhp) continue;
+            if (Math.hypot(o.x - e.x, o.y - e.y) > e.healer.radius) continue;
+            o.hp = Math.min(o.maxhp, o.hp + e.healer.amount * e.hpMult);
+            g.beams.push({ x1: e.x, y1: e.y, x2: o.x, y2: o.y, w: 1.5, life: 0.2, life0: 0.2, color: '#1E7F4F' });
+          }
+          e.pulse = 1;
+        }
+      }
+      if (e.pulse) e.pulse = Math.max(0, e.pulse - dt * 3);
+      if (e.blink) {                           // blinker hops toward the base, never onto it
+        e.blinkT -= dt;
+        if (e.blinkT <= 0) {
+          e.blinkT = e.blink.interval;
+          if (d > 150) {
+            spawnBurst(e.x, e.y, e.color, 6);
+            const hop = Math.min(e.blink.dist, d - 120);
+            e.x += (dx / d) * hop; e.y += (dy / d) * hop;
+            spawnBurst(e.x, e.y, e.color, 6);
+            e.blinkFx = 1;
+          }
+        }
+      }
+      if (e.blinkFx) e.blinkFx = Math.max(0, e.blinkFx - dt * 4);
+
       // reached base?
       if (d < 30 + e.r) {
         damageBase(e.dmg);
@@ -889,7 +974,7 @@
         pr.dead = true;
       } else {
         for (const e of g.enemies) {
-          if (e.dead || pr.hit.has(e)) continue;
+          if (e.dead || e.phased || pr.hit.has(e)) continue; // shots pass through faded phantoms
           if (Math.hypot(e.x-pr.x, e.y-pr.y) < e.r + pr.r) {
             if (pr.splash) { explode(pr.x, pr.y, pr.splash, pr.dmg); pr.dead = true; break; }
             const crit = Math.random() < p.critChance;
@@ -974,6 +1059,7 @@
   function acquireTargets() {
     const g = game, n = g.p.multishot, range = g.p.range * g.weatherRange;
     const sorted = g.enemies
+      .filter(e => !e.phased) // faded phantoms can't be locked
       .map(e => ({ e, d: Math.hypot(e.x - g.bx, e.y - g.by) }))
       .sort((a, b) => a.d - b.d);
     const inRange = [], outRange = [];
@@ -1013,7 +1099,7 @@
   function nearestEnemyTo(x, y) {
     let best = null, bd = Infinity;
     for (const e of game.enemies) {
-      if (e.dead) continue;
+      if (e.dead || e.phased) continue;
       const d = Math.hypot(e.x - x, e.y - y);
       if (d < bd) { bd = d; best = e; }
     }
@@ -1129,7 +1215,7 @@
       for (let chain = 0; chain < 3; chain++) {       // zap nearest, then chain
         let tgt = null, bd = Infinity;
         for (const e of g.enemies) {
-          if (e.dead || hit.has(e)) continue;
+          if (e.dead || e.phased || hit.has(e)) continue;
           const d = Math.hypot(e.x - from.x, e.y - from.y);
           if (d < bd) { bd = d; tgt = e; }
         }
@@ -1355,7 +1441,7 @@
       const cfg = WEAPONS[w], isRail = w === 'railgun';
       const reach = p.range * g.weatherRange * 1.05, halfW = cfg.halfW, dmg = p.damage * cfg.dmgMult;
       for (const en of g.enemies) {           // hitscan — damage everything along the ray
-        if (en.dead) continue;
+        if (en.dead || en.phased) continue;
         const t = (en.x - ox)*dx + (en.y - oy)*dy;
         if (t < 0 || t > reach) continue;
         const px = ox + dx*t, py = oy + dy*t;
@@ -1384,7 +1470,7 @@
 
   // Apply damage to an enemy (armored types take reduced damage) and handle its death.
   function damageEnemy(e, dmg) {
-    if (e.dead) return;
+    if (e.dead || e.phased) return; // faded phantoms are immune
     e.hp -= e.armor ? dmg * (1 - e.armor) : dmg;
     if (e.hp <= 0) killEnemy(e);
   }
@@ -1560,6 +1646,26 @@
     if (g.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${0.5 * g.flash})`; ctx.fillRect(0, 0, W, H); }
   }
 
+  // Trace an enemy's irregular rock silhouette (scaled) into the current path.
+  function rockPath(e, scale) {
+    ctx.beginPath();
+    for (let i = 0; i < e.verts.length; i++) {
+      const v = e.verts[i], fx = Math.cos(v.a) * e.r * v.k * scale, fy = Math.sin(v.a) * e.r * v.k * scale;
+      i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
+    }
+    ctx.closePath();
+  }
+
+  // Regular n-gon path centred on the current origin.
+  function polyPath(n, r, a0) {
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * 6.2832, fx = Math.cos(a) * r, fy = Math.sin(a) * r;
+      i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
+    }
+    ctx.closePath();
+  }
+
   function drawEnemy(e) {
     // proximity shadow cast on the surface below — a cached soft sprite, offset away
     // from a fixed light source and squashed to the ground plane. Far from the surface
@@ -1578,68 +1684,301 @@
       ctx.globalAlpha = 1;
     }
 
+    // comet ion tail — streams opposite the velocity, drawn in world space under the body
+    if (e.comet) {
+      const spd = Math.hypot(e.vx || 0, e.vy || 1) || 1;
+      const tx = -(e.vx || 0) / spd, ty = -(e.vy || 1) / spd;
+      const len = e.r * (5 + Math.sin(game.t * 9 + e.phase) * 0.8);
+      const grad = ctx.createLinearGradient(e.x, e.y, e.x + tx * len, e.y + ty * len);
+      grad.addColorStop(0, 'rgba(55,166,230,0.45)');
+      grad.addColorStop(1, 'rgba(55,166,230,0)');
+      ctx.fillStyle = grad;
+      const px = -ty, py = tx; // perpendicular, sets the tail's width at the head
+      ctx.beginPath();
+      ctx.moveTo(e.x + px * e.r * 0.7, e.y + py * e.r * 0.7);
+      ctx.lineTo(e.x + tx * len, e.y + ty * len);
+      ctx.lineTo(e.x - px * e.r * 0.7, e.y - py * e.r * 0.7);
+      ctx.closePath(); ctx.fill();
+    }
+
     ctx.save();
     ctx.translate(e.x, e.y);
     const hpFrac = e.hp / e.maxhp;
+    // craft sprites are drawn nose-up and rotated to their heading; rocks tumble instead
+    const heading = Math.atan2(e.vy ?? 60, e.vx ?? 0) + Math.PI / 2;
+    const flick = 0.6 + 0.4 * Math.sin(game.t * 22 + e.phase * 7); // shared engine flicker
+
     if (e.type === 'carrier') {
       ctx.rotate(e.phase * 0.4);
-      // glow
+      // glow ring
       ctx.shadowColor = '#FC3D21'; ctx.shadowBlur = 16;
       ctx.strokeStyle = '#FC3D21'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(252,61,33,0.25)';
+      ctx.fillStyle = 'rgba(252,61,33,0.18)';
       ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.fill();
-      // ticks
+      // hull brackets + survey ticks around the ring
+      ctx.fillStyle = '#0A0E14';
+      for (let i=0;i<4;i++){ ctx.rotate(1.5708); ctx.fillRect(-2.5, -e.r-2, 5, 6); }
       ctx.strokeStyle = '#FC3D21';
       for (let i=0;i<4;i++){ ctx.rotate(1.5708); ctx.beginPath(); ctx.moveTo(0,-e.r-4); ctx.lineTo(0,-e.r-9); ctx.stroke(); }
-      // core dot
+      // gold payload core, pulsing — counter-rotated so it reads as slung cargo
+      ctx.rotate(-e.phase * 0.4);
+      const pulse = 0.8 + 0.2 * Math.sin(game.t * 5 + e.phase);
       ctx.fillStyle = '#C98A00';
-      ctx.beginPath(); ctx.arc(0,0,4,0,6.2832); ctx.fill();
-    } else if (e.type === 'hulk') {
+      ctx.save(); ctx.scale(pulse, pulse);
+      ctx.beginPath(); ctx.moveTo(0,-5.5); ctx.lineTo(5.5,0); ctx.lineTo(0,5.5); ctx.lineTo(-5.5,0); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#FFF8E6';
+      ctx.beginPath(); ctx.arc(0,0,1.7,0,6.2832); ctx.fill();
+
+    } else if (e.rock) { // asteroid / pebble / comet nucleus — tumbling irregular slab
+      ctx.rotate(e.phase * e.spin);
       ctx.fillStyle = e.color;
       ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.rect(-e.r,-e.r,e.r*2,e.r*2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = 'rgba(10,14,20,0.4)';
-      ctx.beginPath(); ctx.moveTo(-e.r*0.4,-e.r); ctx.lineTo(-e.r*0.4,e.r);
-      ctx.moveTo(e.r*0.4,-e.r); ctx.lineTo(e.r*0.4,e.r); ctx.stroke();
-    } else if (e.type === 'swarm') {
+      rockPath(e, 1); ctx.fill(); ctx.stroke();
+      // lit facet toward the upper-left light source
+      ctx.fillStyle = e.comet ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.14)';
+      ctx.save(); ctx.translate(-e.r*0.18, -e.r*0.18); rockPath(e, 0.62); ctx.fill(); ctx.restore();
+      // craters
+      ctx.fillStyle = 'rgba(10,14,20,0.28)';
+      for (const c of e.craters) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, 6.2832); ctx.fill(); }
+      // stress fractures spread once it's been chipped below half
+      if (hpFrac < 0.55 && !e.comet) {
+        ctx.strokeStyle = 'rgba(10,14,20,0.55)'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const v = e.verts[(i * 2) % e.verts.length];
+          ctx.moveTo(0, 0); ctx.lineTo(Math.cos(v.a) * e.r * v.k * 0.8, Math.sin(v.a) * e.r * v.k * 0.8);
+        }
+        ctx.stroke();
+      }
+
+    } else if (e.type === 'hulk') { // riveted freighter slab
+      ctx.rotate(heading);
+      const w2 = e.r * 0.85, h2 = e.r;
+      // twin engine glows at the rear
+      ctx.fillStyle = `rgba(252,61,33,${0.4 * flick})`;
+      ctx.fillRect(-w2*0.6 - 2, h2, 4, 4 + 3*flick);
+      ctx.fillRect( w2*0.6 - 2, h2, 4, 4 + 3*flick);
+      // hull with a chamfered nose
       ctx.fillStyle = e.color;
-      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r,e.r); ctx.lineTo(-e.r,e.r); ctx.closePath(); ctx.fill();
-    } else if (e.type === 'sprinter') { // teal dart
-      ctx.fillStyle = e.color;
-      ctx.beginPath(); ctx.moveTo(0, e.r*1.2); ctx.lineTo(e.r*0.75, -e.r*0.7); ctx.lineTo(0, -e.r*0.3); ctx.lineTo(-e.r*0.75, -e.r*0.7); ctx.closePath(); ctx.fill();
-    } else if (e.type === 'brute') { // big hexagon
-      ctx.fillStyle = e.color; ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
       ctx.beginPath();
-      for (let i=0;i<6;i++){ const a=Math.PI/6 + i*Math.PI/3, fx=Math.cos(a)*e.r, fy=Math.sin(a)*e.r; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle='rgba(10,14,20,0.4)';
-      ctx.beginPath(); ctx.moveTo(-e.r*0.5,0); ctx.lineTo(e.r*0.5,0); ctx.stroke();
-    } else if (e.type === 'splitter') { // purple cell that divides
-      ctx.fillStyle = e.color;
-      ctx.beginPath(); ctx.arc(0,0,e.r,0,6.2832); ctx.fill();
-      ctx.strokeStyle='rgba(10,14,20,0.5)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(0,e.r); ctx.moveTo(-e.r,0); ctx.lineTo(e.r,0); ctx.stroke();
-    } else if (e.type === 'weaver') { // gold 4-point star
-      ctx.fillStyle = e.color;
+      ctx.moveTo(-w2, -h2*0.55); ctx.lineTo(-w2*0.55, -h2); ctx.lineTo(w2*0.55, -h2); ctx.lineTo(w2, -h2*0.55);
+      ctx.lineTo(w2, h2); ctx.lineTo(-w2, h2); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // plating seams + rivets
+      ctx.strokeStyle = 'rgba(10,14,20,0.4)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let i=0;i<8;i++){ const a=i*Math.PI/4, rr=(i%2===0)?e.r:e.r*0.4, fx=Math.cos(a)*rr, fy=Math.sin(a)*rr; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
-      ctx.closePath(); ctx.fill();
-    } else if (e.type === 'armored') { // steel octagon with an armour ring
+      ctx.moveTo(-w2, -h2*0.1); ctx.lineTo(w2, -h2*0.1);
+      ctx.moveTo(-w2, h2*0.5);  ctx.lineTo(w2, h2*0.5);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(10,14,20,0.5)';
+      for (const [rx, ry] of [[-w2*0.6,-h2*0.35],[w2*0.6,-h2*0.35],[-w2*0.6,h2*0.75],[w2*0.6,h2*0.75]]) {
+        ctx.beginPath(); ctx.arc(rx, ry, 1.4, 0, 6.2832); ctx.fill();
+      }
+      // vermilion hazard chevron on the nose
+      ctx.strokeStyle = 'rgba(252,61,33,0.85)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-w2*0.4, -h2*0.6); ctx.lineTo(0, -h2*0.82); ctx.lineTo(w2*0.4, -h2*0.6); ctx.stroke();
+
+    } else if (e.type === 'swarm') { // tiny dart with a wing shimmer
+      ctx.rotate(heading);
+      ctx.fillStyle = `rgba(30,127,79,${0.28 * flick})`;
+      ctx.beginPath(); ctx.ellipse(0, e.r*0.2, e.r*1.3, e.r*0.45, 0, 0, 6.2832); ctx.fill();
       ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r*0.8, e.r); ctx.lineTo(0, e.r*0.45); ctx.lineTo(-e.r*0.8, e.r); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#F3F5F8';
+      ctx.fillRect(-0.8, -e.r*0.45, 1.6, 1.6);
+
+    } else if (e.type === 'sprinter') { // teal needle with an afterburner
+      ctx.rotate(heading);
+      // trailing speed lines
+      ctx.strokeStyle = 'rgba(14,124,139,0.35)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let i=0;i<8;i++){ const a=Math.PI/8 + i*Math.PI/4, fx=Math.cos(a)*e.r, fy=Math.sin(a)*e.r; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle='rgba(127,168,224,0.7)'; ctx.lineWidth=2.5;
-      ctx.beginPath();
-      for (let i=0;i<8;i++){ const a=Math.PI/8 + i*Math.PI/4, fx=Math.cos(a)*(e.r+1.5), fy=Math.sin(a)*(e.r+1.5); i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
-      ctx.closePath(); ctx.stroke();
-    } else { // drone — diamond
+      ctx.moveTo(-e.r*0.5, e.r*1.0); ctx.lineTo(-e.r*0.5, e.r*1.0 + 7);
+      ctx.moveTo( e.r*0.5, e.r*1.0); ctx.lineTo( e.r*0.5, e.r*1.0 + 7);
+      ctx.stroke();
+      // afterburner flame
+      ctx.fillStyle = `rgba(252,61,33,${0.55 * flick})`;
+      ctx.beginPath(); ctx.moveTo(-2, e.r*0.75); ctx.lineTo(0, e.r*0.75 + 6 + 5*flick); ctx.lineTo(2, e.r*0.75); ctx.closePath(); ctx.fill();
+      // needle hull + canopy stripe
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.moveTo(0, -e.r*1.5); ctx.lineTo(e.r*0.55, e.r*0.8); ctx.lineTo(0, e.r*0.4); ctx.lineTo(-e.r*0.55, e.r*0.8); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(243,245,248,0.8)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, -e.r*1.1); ctx.lineTo(0, -e.r*0.2); ctx.stroke();
+
+    } else if (e.type === 'brute') { // hexagonal dreadnought, slow self-rotation
+      ctx.rotate(e.phase * 0.15);
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2;
+      polyPath(6, e.r, Math.PI/6); ctx.fill(); ctx.stroke();
+      // inner armour line + vertex bolts
+      ctx.strokeStyle = 'rgba(127,168,224,0.35)'; ctx.lineWidth = 1.5;
+      polyPath(6, e.r*0.72, Math.PI/6); ctx.stroke();
+      ctx.fillStyle = '#0A0E14';
+      for (let i=0;i<6;i++){ const a=Math.PI/6 + i*Math.PI/3; ctx.beginPath(); ctx.arc(Math.cos(a)*e.r*0.85, Math.sin(a)*e.r*0.85, 1.8, 0, 6.2832); ctx.fill(); }
+      // reactor core — runs blue, glows angry vermilion once the hull is half gone
+      const coreCol = hpFrac > 0.5 ? '11,61,145' : '252,61,33';
+      ctx.fillStyle = `rgba(${coreCol},${0.55 + 0.35 * Math.sin(game.t * 4 + e.phase)})`;
+      polyPath(6, e.r*0.32, Math.PI/6); ctx.fill();
+
+    } else if (e.type === 'splitter') { // organic cell, nuclei drift apart as it nears splitting
+      const wob = 1 + 0.06 * Math.sin(game.t * 6 + e.phase);
+      ctx.fillStyle = 'rgba(122,61,145,0.28)';
+      ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, e.r * wob, 0, 6.2832); ctx.fill(); ctx.stroke();
+      const sep = e.r * (0.22 + 0.38 * (1 - hpFrac));
+      const bob = Math.sin(game.t * 3 + e.phase) * 1.5, nr = e.r * 0.34;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(-sep,  bob, nr, 0, 6.2832); ctx.fill();
+      ctx.beginPath(); ctx.arc( sep, -bob, nr, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = '#F3F5F8';
+      ctx.beginPath(); ctx.arc(-sep,  bob, 1.4, 0, 6.2832); ctx.fill();
+      ctx.beginPath(); ctx.arc( sep, -bob, 1.4, 0, 6.2832); ctx.fill();
+
+    } else if (e.type === 'weaver') { // spinning gold star with a shimmer halo
+      ctx.fillStyle = `rgba(201,138,0,${0.12 + 0.08 * Math.sin(game.t * 8 + e.phase)})`;
+      ctx.beginPath(); ctx.arc(0, 0, e.r*1.25, 0, 6.2832); ctx.fill();
+      ctx.rotate(e.phase * 1.2);
       ctx.fillStyle = e.color;
       ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0,-e.r); ctx.lineTo(e.r,0); ctx.lineTo(0,e.r); ctx.lineTo(-e.r,0); ctx.closePath();
+      ctx.beginPath();
+      for (let i=0;i<8;i++){ const a=i*Math.PI/4, rr=(i%2===0)?e.r:e.r*0.4, fx=Math.cos(a)*rr, fy=Math.sin(a)*rr; i?ctx.lineTo(fx,fy):ctx.moveTo(fx,fy); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0A0E14';
+      polyPath(4, e.r*0.28, 0); ctx.fill();
+      ctx.fillStyle = '#F3F5F8';
+      ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, 6.2832); ctx.fill();
+
+    } else if (e.type === 'armored') { // steel core ringed by plates that shear off with damage
+      ctx.rotate(e.phase * 0.25);
+      ctx.fillStyle = '#3A4250';
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
+      polyPath(8, e.r*0.62, Math.PI/8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(252,61,33,0.9)';
+      ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, 6.2832); ctx.fill();
+      // one plate falls away per eighth of hp lost — armour visibly wearing down
+      const plates = Math.ceil(hpFrac * 8);
+      ctx.fillStyle = e.color;
+      for (let i = 0; i < plates; i++) {
+        const a1 = Math.PI/8 + i*Math.PI/4 + 0.06, a2 = Math.PI/8 + (i+1)*Math.PI/4 - 0.06;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.r + 1.5, a1, a2);
+        ctx.arc(0, 0, e.r * 0.72, a2, a1, true);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+
+    } else if (e.type === 'hive') { // segmented carapace carrier that births swarm darts
+      ctx.rotate(heading);
+      // rear hatch — glows when a child is born
+      ctx.fillStyle = `rgba(30,127,79,${0.25 + (e.hatch || 0) * 0.6})`;
+      ctx.beginPath(); ctx.ellipse(0, e.r * 0.8, e.r * 0.42, e.r * 0.26, 0, 0, 6.2832); ctx.fill();
+      // carapace with segment seams
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, 0, e.r * 0.8, e.r, 0, 0, 6.2832); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(10,14,20,0.4)'; ctx.lineWidth = 1;
+      for (let i = -1; i <= 1; i++) {
+        const sy2 = i * e.r * 0.42, sw = e.r * 0.78 * Math.sqrt(1 - Math.pow(sy2 / e.r, 2));
+        ctx.beginPath(); ctx.moveTo(-sw, sy2); ctx.lineTo(sw, sy2); ctx.stroke();
+      }
+      // brood pips along the flanks — one dims for each dart already hatched
+      const total = e.spawner.brood;
+      for (let i = 0; i < total; i++) {
+        const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+        const py2 = -e.r * 0.55 + row * e.r * 0.32;
+        ctx.fillStyle = i < e.brood ? '#F3F5F8' : 'rgba(10,14,20,0.55)';
+        ctx.beginPath(); ctx.arc(side * e.r * 0.5, py2, 1.6, 0, 6.2832); ctx.fill();
+      }
+
+    } else if (e.type === 'phantom') { // ghost craft — dashed outline while faded out
+      ctx.globalAlpha = e.fade;
+      ctx.rotate(heading);
+      ctx.fillStyle = 'rgba(127,168,224,0.18)';
+      ctx.strokeStyle = e.color; ctx.lineWidth = 1.5;
+      ctx.setLineDash(e.solid ? [] : [4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, -e.r * 1.2);
+      ctx.quadraticCurveTo( e.r, -e.r * 0.2, 0, e.r);
+      ctx.quadraticCurveTo(-e.r, -e.r * 0.2, 0, -e.r * 1.2);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      // sensor eye stays lit even when the hull fades
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(0, -e.r * 0.3, 2, 0, 6.2832); ctx.fill();
+
+    } else if (e.type === 'tender') { // steel medic drone with a green cross
+      if (e.pulse) { // expanding heal ring
+        ctx.strokeStyle = `rgba(30,127,79,${e.pulse * 0.5})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, e.r + (1 - e.pulse) * 26, 0, 6.2832); ctx.stroke();
+      }
+      ctx.rotate(heading);
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
+      polyPath(6, e.r, 0); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1E7F4F';
+      ctx.fillRect(-1.8, -e.r * 0.55, 3.6, e.r * 1.1);
+      ctx.fillRect(-e.r * 0.55, -1.8, e.r * 1.1, 3.6);
+
+    } else if (e.type === 'blinker') { // unstable twin-triangle drive that spins up, then jumps
+      const charge = 1 - Math.max(0, Math.min(1, e.blinkT / e.blink.interval));
+      if (e.blinkFx) { // rematerialise flash
+        ctx.strokeStyle = `rgba(122,61,145,${e.blinkFx * 0.7})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, e.r + 3 + (1 - e.blinkFx) * 10, 0, 6.2832); ctx.stroke();
+      }
+      ctx.rotate(e.phase * 2 + charge * charge * 6); // accelerating spin telegraphs the jump
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
+      polyPath(3, e.r, -Math.PI / 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(243,245,248,0.55)';
+      polyPath(3, e.r * 0.55, Math.PI / 2); ctx.fill();
+      // drive core brightens toward vermilion as the charge completes
+      ctx.fillStyle = `rgba(252,61,33,${0.2 + charge * 0.8})`;
+      ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, 6.2832); ctx.fill();
+
+    } else if (e.type === 'titan') { // layered dreadnought — carries two brutes inside
+      ctx.rotate(e.phase * 0.1);
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2.5;
+      polyPath(8, e.r, Math.PI / 8); ctx.fill(); ctx.stroke();
+      // vermilion hazard ticks on alternating facets
+      ctx.strokeStyle = 'rgba(252,61,33,0.7)'; ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i += 2) {
+        const a = Math.PI / 8 + (i + 0.5) * Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * e.r * 0.82, Math.sin(a) * e.r * 0.82);
+        ctx.lineTo(Math.cos(a) * e.r * 0.95, Math.sin(a) * e.r * 0.95);
+        ctx.stroke();
+      }
+      // counter-rotating inner platform
+      ctx.rotate(-e.phase * 0.28);
+      ctx.fillStyle = '#3A4250';
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
+      polyPath(6, e.r * 0.6, 0); ctx.fill(); ctx.stroke();
+      // the two brute cores it splits into, pulsing harder as the hull fails
+      const beat = 0.6 + 0.4 * Math.sin(game.t * (3 + (1 - hpFrac) * 5) + e.phase);
+      ctx.fillStyle = `rgba(127,168,224,${0.35 + beat * 0.4})`;
+      polyPath(6, e.r * 0.2, Math.PI / 6); ctx.fill();
+      ctx.save(); ctx.translate(-e.r * 0.3, 0); polyPath(6, e.r * 0.14, 0); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate( e.r * 0.3, 0); polyPath(6, e.r * 0.14, 0); ctx.fill(); ctx.restore();
+
+    } else { // drone — small blueprint-blue craft
+      ctx.rotate(heading);
+      // engine flicker at the tail
+      ctx.fillStyle = `rgba(252,61,33,${0.35 * flick})`;
+      ctx.beginPath(); ctx.moveTo(-2.5, e.r*0.85); ctx.lineTo(0, e.r*0.85 + 5*flick); ctx.lineTo(2.5, e.r*0.85); ctx.closePath(); ctx.fill();
+      // stub fins
+      ctx.fillStyle = '#0A0E14';
+      ctx.beginPath(); ctx.moveTo(-e.r, e.r*0.6); ctx.lineTo(-e.r*0.25, -e.r*0.1); ctx.lineTo(-e.r*0.25, e.r*0.75); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo( e.r, e.r*0.6); ctx.lineTo( e.r*0.25, -e.r*0.1); ctx.lineTo( e.r*0.25, e.r*0.75); ctx.closePath(); ctx.fill();
+      // hull — elongated diamond with a canopy window
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, -e.r*1.1); ctx.lineTo(e.r*0.55, e.r*0.35); ctx.lineTo(0, e.r*0.85); ctx.lineTo(-e.r*0.55, e.r*0.35); ctx.closePath();
       ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#F3F5F8';
+      ctx.beginPath(); ctx.arc(0, -e.r*0.35, Math.max(1.2, e.r*0.18), 0, 6.2832); ctx.fill();
     }
     ctx.restore();
     // hp bar for tougher enemies
