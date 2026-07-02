@@ -3,9 +3,11 @@
   "private": true,
   "description": "Static build — no bundler. This package.json only wires up a local dev server for testing over http(s), since the ES modules in src/ can't load over file://.",
   "scripts": {
-    "start": "http-server -p 8123 -c-1"
+    "start": "http-server -p 8123 -c-1",
+    "stop": "npx kill-port 8123"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "kill-port": "^2.0.1"
   }
 }

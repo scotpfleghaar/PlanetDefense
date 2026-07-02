@@ -39,14 +39,22 @@ export const ENEMY_ROSTER = [
   { type:'titan',    unlock:32, weight:0.15 },
 ];
 
-export function pickEnemyType(w) {
+export function unlockedRoster(w) {
+  return ENEMY_ROSTER.filter(r => w >= r.unlock);
+}
+
+// weighted random draw over a set of {type, weight} roster entries
+export function weightedPick(entries) {
   let total = 0;
-  for (const r of ENEMY_ROSTER) if (w >= r.unlock) total += r.weight;
+  for (const e of entries) total += e.weight;
   let x = Math.random() * total;
-  for (const r of ENEMY_ROSTER) {
-    if (w < r.unlock) continue;
-    x -= r.weight;
-    if (x <= 0) return r.type;
+  for (const e of entries) {
+    x -= e.weight;
+    if (x <= 0) return e.type;
   }
-  return 'drone';
+  return entries[entries.length - 1]?.type ?? 'drone';
+}
+
+export function pickEnemyType(w) {
+  return weightedPick(unlockedRoster(w));
 }

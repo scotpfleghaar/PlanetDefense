@@ -1,5 +1,5 @@
 import { Enemy } from '../entities/Enemy.js';
-import { pickEnemyType } from '../data/enemies.js';
+import { buildWaveComposition } from '../data/waveArchetypes.js';
 import { WAVE, WEATHER } from '../data/tuning.js';
 import { save } from '../state/save.js';
 
@@ -46,10 +46,8 @@ export class WaveManager {
     const count = WAVE.baseCount + Math.floor(w * WAVE.countLinear + w * w * WAVE.countQuad);
     const hpMult = 1 + (w-1) * WAVE.hpPerWave;
     const speedMult = 1 + (w-1) * WAVE.speedPerWave;
-    const q = [];
-    for (let i = 0; i < count; i++) {
-      q.push({ type: pickEnemyType(w), hpMult, speedMult });
-    }
+    const { types } = buildWaveComposition(w, count);
+    const q = types.map(type => ({ type, hpMult, speedMult }));
     // carriers: ~1 per wave from wave 2, scaled by beacon meta
     const carriers = Math.max(0, Math.round((w >= 2 ? 1 : 0) * game.p.carrierBoost) + (w >= 5 ? 1 : 0));
     for (let i = 0; i < carriers; i++) {
