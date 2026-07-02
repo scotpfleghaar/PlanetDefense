@@ -534,6 +534,9 @@
     { id:'optics', name:'Extended Range', cost:expCost(55, 1.15),
       desc:l=>`Turret range +${Math.round((Math.pow(1.05,l)-1)*100)}% → +${Math.round((Math.pow(1.05,l+1)-1)*100)}%`,
       apply:(p,l)=>{ p.range *= Math.pow(1.05,l); } },
+    { id:'construction', name:'Construction Corps', cost:expCost(90, 1.2),
+      desc:l=>`Building cards ${l===0?'':`+${Math.round(l*40)}% → `}+${Math.round((l+1)*40)}% more common`,
+      apply:(p,l)=>{ p.buildingWeightMult = 1 + 0.4*l; } },
   ];
 
   // ───────────────────────── In-run upgrade pool ─────────────────────────
@@ -576,15 +579,20 @@
       apply:p=>refitTurret(p, 'railgun') },
     { name:'Flak Cannon', tag:'Weapon', desc:'Refit a turret to a short-range scatter of pellets. Great vs swarms.',
       apply:p=>refitTurret(p, 'flak') },
-    // rare one-off building cards — each adds a structure somewhere on the ground
-    { name:'Missile Silo', tag:'Building', rare:true, desc:'Build a silo on the ground that launches arcing missiles which strike any enemy, any distance.',
-      apply:p=>addBuilding('silo') },
-    { name:'Arc Tower', tag:'Building', rare:true, desc:'Build a tower that arcs chain-lightning between nearby enemies.',
-      apply:p=>addBuilding('arc') },
-    { name:'Mortar Battery', tag:'Building', rare:true, desc:'Build a mortar that lobs heavy explosive shells at the closest threat.',
-      apply:p=>addBuilding('mortar') },
-    { name:'Repair Bay', tag:'Building', rare:true, desc:'Build a bay that slowly repairs base integrity over time.',
-      apply:p=>addBuilding('repair') },
+    // rare building cards — first pick places a structure within tower range; later
+    // picks of the same card upgrade that structure in place instead of adding a copy.
+    { id:'silo', name:'Missile Silo', tag:'Building', rare:true,
+      desc:()=>buildingCardDesc('silo', 'launches arcing missiles that strike any enemy, any distance'),
+      apply:p=>addOrUpgradeBuilding('silo') },
+    { id:'arc', name:'Arc Tower', tag:'Building', rare:true,
+      desc:()=>buildingCardDesc('arc', 'arcs chain-lightning between nearby enemies'),
+      apply:p=>addOrUpgradeBuilding('arc') },
+    { id:'mortar', name:'Mortar Battery', tag:'Building', rare:true,
+      desc:()=>buildingCardDesc('mortar', 'lobs heavy explosive shells at the closest threat'),
+      apply:p=>addOrUpgradeBuilding('mortar') },
+    { id:'repair', name:'Repair Bay', tag:'Building', rare:true,
+      desc:()=>buildingCardDesc('repair', 'slowly repairs base integrity over time'),
+      apply:p=>addOrUpgradeBuilding('repair') },
   ];
 
   // ───────────────────────── Weapon types (per-turret) ─────────────────────────
@@ -680,7 +688,7 @@
       damage: 3, fireInterval: 0.55, projSpeed: 360, range: 240,
       multishot: 1, pierce: 0, critChance: 0,
       slow: 1,
-      scoreMult: 1, coreValue: 1, carrierBoost: 1,
+      scoreMult: 1, coreValue: 1, carrierBoost: 1, buildingWeightMult: 1,
     };
     // apply meta
     for (const m of META) {
@@ -1159,13 +1167,20 @@
   }
 
   // ───────────────────────── Ground buildings ─────────────────────────
-  // Independent structures placed anywhere along the ground, each acting on its own
-  // cadence regardless of turret range. Added (rarely) via one-off building cards.
+  // Structures placed on the ground within the tower's range ring, each acting on
+  // its own cadence (attack range itself stays unlimited — they're independent
+  // emplacements, not turret extensions). Added via rare building cards; picking
+  // a card for a building you already own upgrades it in place instead of adding
+  // a duplicate, so each type levels up (faster + stronger) over a run.
   const BUILDINGS = {
-    silo:   { name:'Missile Silo',   interval:2.4, accent:'#FC3D21' },
-    arc:    { name:'Arc Tower',      interval:1.5, accent:'#37A6E6' },
-    mortar: { name:'Mortar Battery', interval:3.2, accent:'#C98A00' },
-    repair: { name:'Repair Bay',     accent:'#1E7F4F' }, // passive, no interval
+    silo:   { name:'Missile Silo',   accent:'#FC3D21',
+              interval:l=>2.4*Math.pow(0.92,l-1), dmgMult:l=>1+0.15*(l-1), splashAdd:l=>4*(l-1) },
+    arc:    { name:'Arc Tower',      accent:'#37A6E6',
+              interval:l=>1.5*Math.pow(0.92,l-1), dmgMult:l=>1+0.15*(l-1), radiusAdd:l=>20*(l-1) },
+    mortar: { name:'Mortar Battery', accent:'#C98A00',
+              interval:l=>3.2*Math.pow(0.92,l-1), dmgMult:l=>1+0.15*(l-1), splashAdd:l=>6*(l-1) },
+    repair: { name:'Repair Bay',     accent:'#1E7F4F',
+              healRate:l=>5+1.5*(l-1) }, // passive, no interval
   };
 
   function randomEnemy() {
@@ -1181,30 +1196,45 @@
     return best;
   }
 
-  // Place a building somewhere on the ground, clear of the base footprint.
-  function addBuilding(type) {
+  // Text shown on an in-run building card: a fresh build blurb, or an upgrade
+  // blurb once that type is already standing.
+  function buildingCardDesc(type, verb) {
+    const owned = game && game.buildings.find(b => b.type === type);
+    if (!owned) return `Build a structure within tower range that ${verb}.`;
+    return `Upgrade ${BUILDINGS[type].name} to level ${(owned.level || 1) + 1} — faster and stronger.`;
+  }
+
+  // Place a new building somewhere on the ground within the tower's current range
+  // ring (clear of the base footprint), or — if one of this type already stands —
+  // level it up in place instead of adding a duplicate.
+  function addOrUpgradeBuilding(type) {
     const g = game;
+    const existing = g.buildings.find(b => b.type === type);
+    if (existing) { existing.level = (existing.level || 1) + 1; existing.flash = 1; return; }
+    const range = g.p.range * g.weatherRange;
     let x = g.bx;
-    for (let tries = 0; tries < 12; tries++) {
-      x = 26 + Math.random() * (W - 52);
-      if (Math.abs(x - g.bx) > 64) break;
+    for (let tries = 0; tries < 20; tries++) {
+      const cand = Math.max(26, Math.min(W - 26, g.bx + (Math.random() * 2 - 1) * range));
+      x = cand;
+      if (Math.abs(cand - g.bx) > 34 && Math.hypot(cand - g.bx, groundYAt(cand) - g.by) <= range) break;
     }
-    g.buildings.push({ type, x, y: groundYAt(x) - 1, timer: 0.6 + Math.random() * 1.2, flash: 0, glow: 0 });
+    g.buildings.push({ type, level: 1, x, y: groundYAt(x) - 1, timer: 0.6 + Math.random() * 1.2, flash: 0, glow: 0 });
   }
 
   function updateBuildings(dt) {
     const g = game, p = g.p;
     for (const b of g.buildings) {
       if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 3);
+      const def = BUILDINGS[b.type], lvl = b.level || 1;
       if (b.type === 'repair') {                 // passive integrity regen
-        if (p.baseHP < p.baseMax) { p.baseHP = Math.min(p.baseMax, p.baseHP + 5 * dt); b.glow = 1; }
+        if (p.baseHP < p.baseMax) { p.baseHP = Math.min(p.baseMax, p.baseHP + def.healRate(lvl) * dt); b.glow = 1; }
         else b.glow = Math.max(0, (b.glow || 0) - dt * 2);
         continue;
       }
       if (!g.enemies.length) continue;
       b.timer -= dt;
       if (b.timer <= 0) {
-        b.timer = BUILDINGS[b.type].interval;
+        b.timer = def.interval(lvl);
         fireBuilding(b);
         b.flash = 1;
       }
@@ -1213,25 +1243,27 @@
 
   function fireBuilding(b) {
     const g = game, p = g.p;
+    const def = BUILDINGS[b.type], lvl = b.level || 1;
     const ox = b.x, oy = b.y - 8;
     if (b.type === 'silo') {
       const tgt = randomEnemy(); if (!tgt) return; // pre-select a target at launch
       const sp = 240;
       g.projectiles.push({ x: ox, y: oy, vx: 0, vy: -sp, // straight up, then curve in
-        r: 4, dmg: p.damage * 3, pierce: 0, life: 6, hit: new Set(),
-        missile: true, target: tgt, splash: 44, turn: 3.5,
+        r: 4, dmg: p.damage * 3 * def.dmgMult(lvl), pierce: 0, life: 6, hit: new Set(),
+        missile: true, target: tgt, splash: 44 + def.splashAdd(lvl), turn: 3.5,
         climb: true, climbTo: oy - H / 3 }); // climb ~a third of the screen before homing
 
     } else if (b.type === 'mortar') {
       const tgt = mostAdvancedEnemy(); if (!tgt) return;
       const a = Math.atan2(tgt.y - oy, tgt.x - ox), sp = 300;
       g.projectiles.push({ x: ox, y: oy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
-        r: 4.5, dmg: p.damage * 2.5, pierce: 0, life: 3, hit: new Set(), splash: 66 });
+        r: 4.5, dmg: p.damage * 2.5 * def.dmgMult(lvl), pierce: 0, life: 3, hit: new Set(), splash: 66 + def.splashAdd(lvl) });
 
     } else if (b.type === 'arc') {
       let from = { x: ox, y: oy };
       const hit = new Set();
-      const dmg = p.damage * 1.6;
+      const dmg = p.damage * 1.6 * def.dmgMult(lvl);
+      const reach = 260 + def.radiusAdd(lvl);
       for (let chain = 0; chain < 3; chain++) {       // zap nearest, then chain
         let tgt = null, bd = Infinity;
         for (const e of g.enemies) {
@@ -1239,7 +1271,7 @@
           const d = Math.hypot(e.x - from.x, e.y - from.y);
           if (d < bd) { bd = d; tgt = e; }
         }
-        if (!tgt || bd > 260) break;
+        if (!tgt || bd > reach) break;
         hit.add(tgt);
         spawnBurst(tgt.x, tgt.y, '#37A6E6', 3);
         g.beams.push({ x1: from.x, y1: from.y, x2: tgt.x, y2: tgt.y, w: 2, life: 0.12, life0: 0.12, color: '#37A6E6' });
@@ -2093,6 +2125,12 @@
       ctx.fillStyle = `rgba(30,127,79,${0.55 + lit * 0.45})`;
       ctx.fillRect(-1.4, -7, 2.8, 8); ctx.fillRect(-4, -4.5, 8, 2.8);
     }
+    const lvl = b.level || 1;
+    if (lvl > 1) { // small level pips beneath an upgraded building
+      const accent = BUILDINGS[b.type].accent, n = Math.min(lvl - 1, 5);
+      ctx.fillStyle = accent;
+      for (let i = 0; i < n; i++) ctx.fillRect(-((n - 1) * 4) / 2 + i * 4, 5, 2.4, 2.4);
+    }
     ctx.restore();
   }
 
@@ -2315,7 +2353,7 @@
       const btn = document.createElement('button');
       btn.className = 'card';
       btn.innerHTML = `<div class="c-top"><span class="c-name">${u.name}</span><span class="c-tag">${u.tag}</span></div>
-                       <div class="c-desc">${u.desc}</div>`;
+                       <div class="c-desc">${typeof u.desc === 'function' ? u.desc() : u.desc}</div>`;
       btn.addEventListener('click', () => chooseUpgrade(u));
       body.appendChild(btn);
     });
@@ -2324,7 +2362,8 @@
   function pick3() {
     const pool = UPGRADES.slice();
     const out = [];
-    const wt = c => (c.rare ? 0.18 : 1); // rare cards (buildings) appear far less often
+    // rare cards (buildings) appear far less often, boosted by Construction Corps
+    const wt = c => (c.rare ? 0.18 * (game.p.buildingWeightMult || 1) : 1);
     for (let n = 0; n < 3 && pool.length; n++) {
       let total = 0; for (const c of pool) total += wt(c);
       let r = Math.random() * total, idx = 0;
