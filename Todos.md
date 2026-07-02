@@ -2,3 +2,6 @@
 // Extremely rare cards that are insane - reset research buff, reset enemey speed - reset other buffs.
 // not sure if its possible. But would be cool if we randomize enemies and promote the ones that kill the base to make the harder next time - Just a cool idea.
 // thie higher the levels enemies should get attributes - like shields
+
+// it would be cool if enemeies where randomized
+// We need to make the perminent buffs unlimited and price expoential. and add more of them

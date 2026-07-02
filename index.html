@@ -296,6 +296,7 @@
     .pips { display: flex; gap: 4px; }
     .pip { width: 14px; height: 6px; border: 1px solid var(--line); background: var(--paper); }
     .pip.on { background: var(--blue); border-color: var(--blue); }
+    .pip-extra { font-family: var(--mono); font-size: 0.65rem; color: var(--blue); letter-spacing: 0.04em; }
     .shop-buy {
       align-self: flex-start; padding: 0.45rem 0.9rem; border: none; cursor: pointer;
       font-family: var(--mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em;
@@ -488,32 +489,51 @@
   let save = loadSave();
 
   // ───────────────────────── Meta upgrades ─────────────────────────
-  // Permanent upgrades bought with Salvage. effect(level) applied at run start.
+  // Permanent upgrades bought with Salvage. Unlimited levels; cost grows exponentially per level.
+  // expCost(base, growth) returns a cost(l) function: base * growth^l, rounded to a clean number.
+  function expCost(base, growth) {
+    return l => Math.round(base * Math.pow(growth, l) / 5) * 5;
+  }
   const META = [
-    { id:'integrity', name:'Reinforced Hull', max:5, cost:l=>40+l*45,
+    { id:'integrity', name:'Reinforced Hull', cost:expCost(40, 1.16),
       desc:l=>`Base integrity +${20*(l)} → +${20*(l+1)}`,
       apply:(p,l)=>{ p.baseMax += 20*l; } },
-    { id:'firepower', name:'Heavy Munitions', max:5, cost:l=>50+l*55,
+    { id:'firepower', name:'Heavy Munitions', cost:expCost(50, 1.16),
       desc:l=>`Starting damage +${l} → +${l+1}`,
       apply:(p,l)=>{ p.damage += l; } },
-    { id:'velocity', name:'Servo Tuning', max:4, cost:l=>60+l*70,
+    { id:'velocity', name:'Servo Tuning', cost:expCost(60, 1.18),
       desc:l=>`Fire rate ${Math.round((1-Math.pow(0.9,l))*100)}% → ${Math.round((1-Math.pow(0.9,l+1))*100)}% faster`,
       apply:(p,l)=>{ p.fireInterval *= Math.pow(0.9,l); } },
-    { id:'multiplier', name:'Telemetry Uplink', max:5, cost:l=>70+l*65,
+    { id:'multiplier', name:'Telemetry Uplink', cost:expCost(70, 1.17),
       desc:l=>`Score ×${(1+0.1*l).toFixed(1)} → ×${(1+0.1*(l+1)).toFixed(1)}`,
       apply:(p,l)=>{ p.scoreMult *= (1+0.1*l); } },
-    { id:'corevalue', name:'Salvage Refinery', max:4, cost:l=>80+l*80,
+    { id:'corevalue', name:'Salvage Refinery', cost:expCost(80, 1.18),
       desc:l=>`Salvage per core +${l} → +${l+1}`,
       apply:(p,l)=>{ p.coreValue += l; } },
-    { id:'vanguard', name:'Twin Vanguard', max:2, cost:l=>140+l*120,
+    { id:'vanguard', name:'Twin Vanguard', cost:expCost(140, 1.35),
       desc:l=>`Start with +${l} extra barrel → +${l+1}`,
       apply:(p,l)=>{ p.multishot += l; } },
-    { id:'beacon', name:'Carrier Beacon', max:3, cost:l=>90+l*70,
+    { id:'beacon', name:'Carrier Beacon', cost:expCost(90, 1.17),
       desc:l=>`Carrier spawn rate +${l*25}% → +${(l+1)*25}%`,
       apply:(p,l)=>{ p.carrierBoost = 1 + 0.25*l; } },
-    { id:'shield', name:'Aegis Plating', max:4, cost:l=>70+l*70,
+    { id:'shield', name:'Aegis Plating', cost:expCost(70, 1.16),
       desc:l=>`Start with +${25*l} → +${25*(l+1)} shield`,
       apply:(p,l)=>{ p.shieldMax += 25*l; } },
+    { id:'pierce', name:'Piercing Rounds', cost:expCost(65, 1.2),
+      desc:l=>`Rounds pass through +${l} → +${l+1} enemy`,
+      apply:(p,l)=>{ p.pierce += l; } },
+    { id:'precision', name:'Precision Optics', cost:expCost(85, 1.18),
+      desc:l=>`Crit chance +${Math.round(5*l)}% → +${Math.round(5*(l+1))}%`,
+      apply:(p,l)=>{ p.critChance += 0.05*l; } },
+    { id:'cryo', name:'Cryo Field', cost:expCost(75, 1.17),
+      desc:l=>`Enemies in range ${Math.round((1-Math.pow(0.96,l))*100)}% → ${Math.round((1-Math.pow(0.96,l+1))*100)}% slower`,
+      apply:(p,l)=>{ p.slow *= Math.pow(0.96,l); } },
+    { id:'recharge', name:'Shield Regenerator', cost:expCost(65, 1.16),
+      desc:l=>`Shield regen +${2*l} → +${2*(l+1)}/s`,
+      apply:(p,l)=>{ p.shieldRegen += 2*l; } },
+    { id:'optics', name:'Extended Range', cost:expCost(55, 1.15),
+      desc:l=>`Turret range +${Math.round((Math.pow(1.05,l)-1)*100)}% → +${Math.round((Math.pow(1.05,l+1)-1)*100)}%`,
+      apply:(p,l)=>{ p.range *= Math.pow(1.05,l); } },
   ];
 
   // ───────────────────────── In-run upgrade pool ─────────────────────────
@@ -2413,32 +2433,31 @@
     body.innerHTML = '';
     META.forEach(m => {
       const lvl = save.meta[m.id] || 0;
-      const maxed = lvl >= m.max;
-      const cost = maxed ? 0 : m.cost(lvl);
+      const cost = m.cost(lvl);
       const card = document.createElement('div');
       card.className = 'shop-card';
       let pips = '';
-      for (let i = 0; i < m.max; i++) pips += `<span class="pip${i<lvl?' on':''}"></span>`;
+      const pipCount = Math.min(lvl, 10);
+      for (let i = 0; i < pipCount; i++) pips += `<span class="pip on"></span>`;
+      if (lvl > 10) pips += `<span class="pip-extra">+${lvl - 10}</span>`;
       card.innerHTML = `
         <div class="s-top">
           <span class="s-name">${m.name}</span>
-          <span class="s-lvl">LV ${lvl}/${m.max}</span>
+          <span class="s-lvl">LV ${lvl}</span>
         </div>
-        <div class="s-desc">${maxed ? 'Fully upgraded.' : m.desc(lvl)}</div>
+        <div class="s-desc">${m.desc(lvl)}</div>
         <div class="pips">${pips}</div>
-        <button class="shop-buy${maxed?' maxed':''}" ${maxed||save.salvage<cost?'disabled':''}>
-          ${maxed ? 'MAX' : cost + ' SALVAGE'}
+        <button class="shop-buy" ${save.salvage<cost?'disabled':''}>
+          ${cost.toLocaleString()} SALVAGE
         </button>`;
-      if (!maxed) {
-        card.querySelector('.shop-buy').addEventListener('click', () => {
-          if (save.salvage >= cost) {
-            save.salvage -= cost;
-            save.meta[m.id] = lvl + 1;
-            persist();
-            renderMeta();
-          }
-        });
-      }
+      card.querySelector('.shop-buy').addEventListener('click', () => {
+        if (save.salvage >= cost) {
+          save.salvage -= cost;
+          save.meta[m.id] = lvl + 1;
+          persist();
+          renderMeta();
+        }
+      });
       body.appendChild(card);
     });
   }
