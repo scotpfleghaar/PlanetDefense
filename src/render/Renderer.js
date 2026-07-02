@@ -1,8 +1,9 @@
 import { drawEnemy } from './enemyRenderers.js';
 import {
   drawCore, drawHill, drawBuilding, drawBeams, drawTargeting,
-  drawBase, drawTruck, drawClouds, drawRain, drawLightning,
+  drawBase, drawTruck, drawCloudsBack, drawCloudsFront, drawRain, drawLightning,
 } from './worldRenderers.js';
+import { cloudGL } from './cloudGL.js';
 
 // Owns the canvas + 2D context and the top-level per-frame draw order. Every
 // individual draw* function is a plain function taking (ctx, ...) rather than
@@ -23,6 +24,7 @@ export class Renderer {
     this.cv.width = Math.round(this.W * this.dpr);
     this.cv.height = Math.round(this.H * this.dpr);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    cloudGL.setup(this.W, this.H);
     if (game) game.resize(this.W, this.H);
   }
 
@@ -35,9 +37,12 @@ export class Renderer {
     ctx.save();
     ctx.translate(sx, sy);
 
-    // storm overcast tint + drifting clouds behind the action
+    // storm overcast tint + the high/mid cloud strata behind the action.
+    // Clouds render as a live WebGL density field when available, with the
+    // sprite pipeline as fallback.
     if (game.weather.cloudDark > 0.01) { ctx.fillStyle = `rgba(22,30,48,${0.16 * game.weather.cloudDark})`; ctx.fillRect(-sx-20, -sy-20, W+40, H+40); }
-    drawClouds(ctx, game);
+    if (cloudGL.ok) { cloudGL.renderBack(game); ctx.drawImage(cloudGL.cv, 0, 0, W, H); }
+    else drawCloudsBack(ctx, game);
 
     // range ring (shrinks during a storm)
     ctx.strokeStyle = 'rgba(11,61,145,0.12)';
@@ -64,6 +69,10 @@ export class Renderer {
 
     // laser/railgun beams and explosion shockwaves
     drawBeams(ctx, game);
+
+    // low cloud stratum in front of the enemies, so they pass behind it
+    if (cloudGL.ok) { cloudGL.renderFront(game); ctx.drawImage(cloudGL.cv, 0, 0, W, H); }
+    else drawCloudsFront(ctx, game);
 
     // storm lightning bolts (over the enemies they strike)
     drawLightning(ctx, game);

@@ -1,7 +1,8 @@
 import { WEAPONS } from '../data/weapons.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { turretLayout } from './turretLayout.js';
-import { cloudSprite } from './sprites.js';
+import { cloudLitSprite, cloudSprite, cloudDarkSprite } from './sprites.js';
+import { cloudNoiseTex } from './noise.js';
 
 export function drawCore(ctx, c) {
   ctx.save();
@@ -230,13 +231,87 @@ export function drawTruck(ctx, game) {
   ctx.restore();
 }
 
-export function drawClouds(ctx, game) {
+const PUFF_TONES = [cloudLitSprite, cloudSprite, cloudDarkSprite]; // indexed by puff shade
+
+// Bake a cloud's puffs into offscreen canvases at full opacity, then erode them
+// with the tiling fBm noise texture ('destination-out') so the silhouette turns
+// into fractal billows instead of a union of circles. Baking also keeps the
+// cloud's opacity uniform — compositing translucent puffs directly stacks alpha
+// where they overlap, which reads as a row of discrete blobs — and costs a
+// couple of drawImage calls per cloud instead of one per puff. Two variants are
+// baked with different noise offsets; drawCloud slowly cross-fades between
+// them, so clouds churn and evolve as they drift with no per-frame noise math.
+function bakeCloudVariant(cl, w, h, minX, minY) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const bc = c.getContext('2d');
+  for (const pf of cl.puffs) {
+    const rx = pf.r * cl.sx, ry = pf.r * cl.sy;
+    bc.drawImage(PUFF_TONES[pf.shade || 0], pf.dx - rx - minX, pf.dy - ry - minY, rx * 2, ry * 2);
+  }
+  // saturate the soft puff-union into one near-solid mass before eroding,
+  // otherwise the noise cuts the faint overlaps first and the cloud falls
+  // apart into its individual circles
+  bc.drawImage(c, 0, 0); bc.drawImage(c, 0, 0);
+  bc.globalCompositeOperation = 'destination-out';
+  bc.globalAlpha = 0.85;
+  // stamp unscaled at integer offsets — scaling or subpixel placement makes the
+  // bilinear filter sample past the texture edge and leaves seams between tiles
+  const ts = cloudNoiseTex.width;
+  const ox = -Math.floor(Math.random() * ts), oy = -Math.floor(Math.random() * ts);
+  for (let x = ox; x < w; x += ts)
+    for (let y = oy; y < h; y += ts)
+      bc.drawImage(cloudNoiseTex, x, y);
+  return c;
+}
+
+function bakeCloud(cl) {
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for (const pf of cl.puffs) {
+    const rx = pf.r * cl.sx, ry = pf.r * cl.sy;
+    if (pf.dx - rx < minX) minX = pf.dx - rx;
+    if (pf.dx + rx > maxX) maxX = pf.dx + rx;
+    if (pf.dy - ry < minY) minY = pf.dy - ry;
+    if (pf.dy + ry > maxY) maxY = pf.dy + ry;
+  }
+  const w = Math.max(1, Math.ceil(maxX - minX)), h = Math.max(1, Math.ceil(maxY - minY));
+  return {
+    a: bakeCloudVariant(cl, w, h, minX, minY),
+    b: bakeCloudVariant(cl, w, h, minX, minY),
+    ox: minX, oy: minY,
+    phase: Math.random() * 6.2832,
+    rate: 0.15 + Math.random() * 0.15, // full billow cycle every ~20-40s
+  };
+}
+
+function drawCloud(ctx, cl, alpha, t) {
+  if (!cl.bake) cl.bake = bakeCloud(cl);
+  const b = cl.bake, m = 0.5 + 0.5 * Math.sin(t * b.rate + b.phase);
+  ctx.globalAlpha = alpha * (1 - m);
+  ctx.drawImage(b.a, cl.x + b.ox, cl.y + b.oy);
+  ctx.globalAlpha = alpha * m;
+  ctx.drawImage(b.b, cl.x + b.ox, cl.y + b.oy);
+}
+
+// High cirrus + mid cumulus — behind the action; pale when clear, dense when overcast.
+export function drawCloudsBack(ctx, game) {
   const w = game.weather;
-  if (!w.clouds.length) return;
-  ctx.globalAlpha = 0.10 + 0.26 * w.cloudDark; // pale when clear, dense when overcast
+  const alpha = 0.13 + 0.26 * w.cloudDark;
   for (const cl of w.clouds)
-    for (const pf of cl.puffs)
-      ctx.drawImage(cloudSprite, cl.x + pf.dx - pf.r, cl.y + pf.dy - pf.r, pf.r * 2, pf.r * 2);
+    if (cl.layer !== 'low' && !cl.front) drawCloud(ctx, cl, cl.layer === 'high' ? alpha * 0.8 : alpha, game.t);
+  ctx.globalAlpha = 1;
+}
+
+// Storm front, then low cumulus / cumulonimbus — in front of enemies, so they
+// pass behind them. Kept semi-transparent even at the storm peak so threats
+// never fully vanish.
+export function drawCloudsFront(ctx, game) {
+  const w = game.weather;
+  for (const cl of w.clouds)
+    if (cl.front) drawCloud(ctx, cl, 0.36 + 0.42 * w.cloudDark, game.t);
+  for (const cl of w.clouds)
+    if (cl.layer === 'low')
+      drawCloud(ctx, cl, cl.dark ? 0.42 + 0.32 * w.cloudDark : 0.27 + 0.26 * w.cloudDark, game.t);
   ctx.globalAlpha = 1;
 }
 

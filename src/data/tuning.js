@@ -10,9 +10,17 @@ export const WAVE = {
 };
 
 export const WEATHER = {
-  ambientClouds: 3, stormClouds: 8,   // sky population (clear vs overcast)
-  cloudBand: [0.05, 0.42],            // cloud altitude as a fraction of H
-  cloudSpeed: [6, 16],                // horizontal drift px/s
+  // Three cloud strata. band = altitude as a fraction of H, speed = drift px/s,
+  // count = sky population as [clear, storm]. Farther strata drift slower
+  // (parallax); the low stratum renders in front of enemies, high/mid behind.
+  cloudLayers: {
+    high: { band: [0.03, 0.14], speed: [3, 7],   count: [2, 3] },  // cirrus streaks
+    mid:  { band: [0.14, 0.30], speed: [7, 14],  count: [3, 5] },  // small cumulus
+    low:  { band: [0.28, 0.45], speed: [14, 26], count: [2, 3] },  // big cumulus / storm cumulonimbus
+    // storms additionally roll a screen-spanning squall-line front in from the left
+  },
+  // horizontal drift of the WebGL cloud field per stratum, in screen-widths/s
+  strataDrift: { high: 0.002, mid: 0.005, low: 0.012 },
   stormChance: 0.12,                  // per wave (from wave 3+)
   rangeMul: 0.8,                      // storm turret-range debuff
   slowMul: 0.85,                      // storm enemy-speed debuff

@@ -1,21 +1,97 @@
 import { WEATHER } from '../data/tuning.js';
 import { damageEnemy } from './combat.js';
 
-function makeCloud(game, seeded) {
-  const n = 3 + Math.floor(Math.random() * 3), scale = 0.7 + Math.random() * 0.9;
-  const puffs = [];
+// Puff clusters per stratum. Every cloud is { x, y, speed, puffs, ext, extY,
+// layer, dark, front, sx, sy } — puffs are blob offsets/radii around (x, y)
+// plus a shade index (0 lit / 1 mid / 2 dark) so crowns read sunlit over
+// shaded flat bases; ext/extY are the half-width/upward reach and sx/sy a
+// per-cloud stretch applied at draw time (cirrus are ordinary blobs smeared
+// into thin streaks). dark marks storm clouds, front the rolling squall line.
+
+function cirrusPuffs(scale) {
+  const n = 2 + Math.floor(Math.random() * 3), puffs = [];
   for (let i = 0; i < n; i++) {
-    puffs.push({ dx: (i - (n-1)/2) * 26 * scale + (Math.random()-0.5)*10,
-                 dy: (Math.random()-0.5) * 14 * scale,
-                 r: (26 + Math.random()*22) * scale });
+    puffs.push({ dx: (i - (n-1)/2) * 60 * scale + (Math.random()-0.5)*24,
+                 dy: (Math.random()-0.5) * 8,
+                 r: (16 + Math.random()*10) * scale, shade: 1 });
   }
-  const ext = n * 26 * scale;
-  const band = WEATHER.cloudBand;
+  return { puffs, ext: n * 60 * scale * 1.6, extY: 14 * scale, sx: 3.2, sy: 0.32 };
+}
+
+function cumulusPuffs(scale) {
+  // billowy lit crown along a dome profile over a flat shaded underside
+  const hw = (52 + Math.random() * 36) * scale, puffs = [];
+  const nTop = 5 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < nTop; i++) {
+    const t = i / (nTop - 1), dome = Math.sin(t * Math.PI);
+    puffs.push({ dx: (t - 0.5) * 2 * hw * 0.85 + (Math.random()-0.5) * 8 * scale,
+                 dy: -(8 + dome * (24 + Math.random()*12)) * scale,
+                 r: (15 + dome * 11 + Math.random()*6) * scale, shade: 0 });
+  }
+  for (let i = 0; i < 3; i++)
+    puffs.push({ dx: (i - 1) * hw * 0.75, dy: 0,
+                 r: (23 + Math.random()*8) * scale, shade: 1 });
+  return { puffs, ext: hw + 30 * scale, extY: 52 * scale, sx: 1, sy: 0.8 };
+}
+
+function cumulonimbusPuffs(scale) {
+  const puffs = [];
+  for (let i = 0; i < 4; i++)   // dark flat base
+    puffs.push({ dx: (i - 1.5) * 28 * scale, dy: 0,
+                 r: (30 + Math.random()*10) * scale, shade: 2 });
+  for (let i = 0; i < 4; i++)   // billowing column, brightening with height
+    puffs.push({ dx: (Math.random()-0.5) * 26 * scale, dy: -(22 + i * 22) * scale,
+                 r: (26 + Math.random()*12) * scale * (1 - i * 0.08), shade: i < 2 ? 2 : 1 });
+  for (let i = 0; i < 4; i++)   // anvil spreading downwind
+    puffs.push({ dx: (i - 1.2) * 34 * scale + 10 * scale, dy: -(96 + Math.random()*8) * scale,
+                 r: (20 + Math.random()*8) * scale, shade: 1 });
+  return { puffs, ext: 85 * scale, extY: 125 * scale, sx: 1, sy: 0.9 };
+}
+
+// A squall line spanning more than the whole screen: a ragged dark shelf along
+// the leading underside, a dense core, an upper bank reaching past the top of
+// the screen, and towering heads punching up through it. Spawned off the left
+// edge when a storm rolls in.
+function makeStormFront(game) {
+  const H = game.H, hw = game.W * (0.55 + Math.random() * 0.15);
+  const puffs = [];
+  for (let x = -hw; x <= hw; x += 34) {
+    // slow sine undulation + light jitter so the underside billows instead of banding
+    const jag = Math.sin(x * 0.011) * 0.025 * H + (Math.random() - 0.5) * 0.015 * H;
+    puffs.push({ dx: x + (Math.random()-0.5)*10, dy: jag + 0.012 * H,
+                 r: 30 + Math.random()*14, shade: 2 });                       // shelf
+    puffs.push({ dx: x + (Math.random()-0.5)*16, dy: -0.09 * H + jag,
+                 r: 52 + Math.random()*24, shade: 2 });                       // core
+    puffs.push({ dx: x + (Math.random()-0.5)*24, dy: -0.20 * H + (Math.random()-0.5) * 0.04 * H,
+                 r: 56 + Math.random()*26, shade: 1 });                       // upper bank
+  }
+  const nT = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < nT; i++) {
+    const tx = -hw + (i + 0.5) * (2 * hw / nT) + (Math.random()-0.5)*60;
+    for (let k = 0; k < 3; k++)
+      puffs.push({ dx: tx + (Math.random()-0.5)*22, dy: -0.26 * H - k * 0.055 * H,
+                   r: 40 - k * 7 + Math.random()*12, shade: 1 });             // tower heads
+  }
+  const ext = hw + 90;
   return {
-    x: seeded ? Math.random() * game.W : -ext - Math.random() * game.W * 0.4,
-    y: game.H * (band[0] + Math.random() * (band[1] - band[0])),
-    speed: WEATHER.cloudSpeed[0] + Math.random() * (WEATHER.cloudSpeed[1] - WEATHER.cloudSpeed[0]),
-    puffs, ext,
+    x: -ext, y: H * 0.38,
+    speed: 20 + Math.random() * 8,
+    puffs, ext, extY: H * 0.45, layer: 'front', dark: true, front: true, sx: 1, sy: 1,
+  };
+}
+
+function makeCloud(game, seeded, layer) {
+  const cfg = WEATHER.cloudLayers[layer];
+  const scale = 0.7 + Math.random() * 0.9;
+  const dark = layer === 'low' && game.storm;
+  const shape = layer === 'high' ? cirrusPuffs(scale)
+              : dark             ? cumulonimbusPuffs(scale)
+              :                    cumulusPuffs(scale);
+  return {
+    x: seeded ? Math.random() * game.W : -shape.ext - Math.random() * game.W * 0.4,
+    y: game.H * (cfg.band[0] + Math.random() * (cfg.band[1] - cfg.band[0])) + shape.extY * 0.5,
+    speed: cfg.speed[0] + Math.random() * (cfg.speed[1] - cfg.speed[0]),
+    layer, dark, ...shape,
   };
 }
 
@@ -38,24 +114,58 @@ export class WeatherSystem {
     this.cloudDark = 0; this.cloudsSeeded = false;
     this.clouds = []; this.rain = []; this.lightning = [];
     this.lightningTimer = 0; this.flash = 0;
+    // accumulated horizontal drift per stratum (uv widths) for the WebGL cloud
+    // field; random start so each run opens on a different sky
+    this.drift = { high: Math.random() * 7, mid: Math.random() * 7, low: Math.random() * 7 };
+  }
+
+  // Leading/trailing edge of the storm front in x01, for the shader's wall.
+  frontSpan(game) {
+    for (const cl of this.clouds)
+      if (cl.front) return { edge: (cl.x + cl.ext) / game.W, back: (cl.x - cl.ext) / game.W };
+    return null;
   }
 
   update(game, dt) {
     // ease the overcast darkness toward the storm state
     this.cloudDark += ((game.storm ? 1 : 0) - this.cloudDark) * Math.min(1, dt * 0.7);
 
-    // clouds drift right; despawn off the right edge; refill from the left up to target
-    if (!this.cloudsSeeded) { this.cloudsSeeded = true; for (let i = 0; i < WEATHER.ambientClouds; i++) this.clouds.push(makeCloud(game, true)); }
-    const target = game.storm ? WEATHER.stormClouds : WEATHER.ambientClouds;
-    for (const cl of this.clouds) cl.x += cl.speed * (game.storm ? 1.5 : 1) * dt;
-    this.clouds = this.clouds.filter(cl => cl.x - cl.ext < game.W + 30);
-    while (this.clouds.length < target) this.clouds.push(makeCloud(game));
+    // advance each stratum's drift (parallax: lower strata move faster)
+    const dm = game.storm ? 1.5 : 1;
+    for (const k in WEATHER.strataDrift) this.drift[k] += WEATHER.strataDrift[k] * dm * dt;
 
-    // enemies passing through a cloud shed wisps
+    // clouds drift right; despawn off the right edge; refill each stratum from
+    // the left up to its target. During a storm, new low-stratum spawns are
+    // cumulonimbus — fair-weather cumulus already in the sky just drift out.
+    if (!this.cloudsSeeded) {
+      this.cloudsSeeded = true;
+      for (const layer in WEATHER.cloudLayers)
+        for (let i = 0; i < WEATHER.cloudLayers[layer].count[0]; i++)
+          this.clouds.push(makeCloud(game, true, layer));
+    }
+    for (const cl of this.clouds) {
+      // the front races in from the left, settles to a crawl over the field,
+      // and is swept out quickly once the storm passes; other clouds just drift
+      const mul = cl.front ? (!game.storm ? 4 : cl.x < game.W * 0.45 ? 3 : 1)
+                           : (game.storm ? 1.5 : 1);
+      cl.x += cl.speed * mul * dt;
+    }
+    this.clouds = this.clouds.filter(cl => cl.x - cl.ext < game.W + 30);
+    if (game.storm && !this.clouds.some(cl => cl.front)) this.clouds.push(makeStormFront(game));
+    for (const layer in WEATHER.cloudLayers) {
+      const target = WEATHER.cloudLayers[layer].count[game.storm ? 1 : 0];
+      let n = 0;
+      for (const cl of this.clouds) if (cl.layer === layer) n++;
+      while (n++ < target) this.clouds.push(makeCloud(game, false, layer));
+    }
+
+    // enemies passing through a cloud drawn in front of them shed wisps; the
+    // front is huge, so its rate is kept low to avoid a constant particle spray
     for (const e of game.enemies) {
       for (const cl of this.clouds) {
-        if (Math.abs(e.x - cl.x) < cl.ext && Math.abs(e.y - cl.y) < 30) {
-          if (Math.random() < 0.12) game.particles.spawnWisp(e.x, e.y);
+        if (cl.layer !== 'low' && !cl.front) continue;
+        if (Math.abs(e.x - cl.x) < cl.ext && e.y < cl.y + 24 && e.y > cl.y - cl.extY) {
+          if (Math.random() < (cl.front ? 0.04 : 0.12)) game.particles.spawnWisp(e.x, e.y);
           break;
         }
       }
