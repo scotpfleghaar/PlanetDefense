@@ -1,6 +1,6 @@
 // Planet Defense — offline service worker.
 // Bump the version whenever game files change so installed tablets pick up the update.
-const VERSION = 'pd-v1';
+const VERSION = 'pd-v2';
 
 const APP_SHELL = [
   './',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  'icons/icon.svg',
   'src/style.css',
   'src/main.js',
   'src/core/Game.js',
@@ -28,16 +29,24 @@ const APP_SHELL = [
   'src/render/cloudGL.js',
   'src/render/enemyRenderers.js',
   'src/render/noise.js',
+  'src/render/shieldRenderer.js',
   'src/render/sprites.js',
   'src/render/turretLayout.js',
   'src/render/worldRenderers.js',
   'src/state/save.js',
   'src/systems/ParticleSystem.js',
+  'src/systems/ShieldSystem.js',
   'src/systems/TruckSystem.js',
   'src/systems/WaveManager.js',
   'src/systems/WeatherSystem.js',
   'src/systems/combat.js',
   'src/ui/hud.js',
+  'src/ui/metaShop.js',
+  'src/ui/pauseOverlay.js',
+  'src/ui/reportScreen.js',
+  'src/ui/screens.js',
+  'src/ui/titleScreen.js',
+  'src/ui/upgradeModal.js',
 ];
 
 self.addEventListener('install', (event) => {
