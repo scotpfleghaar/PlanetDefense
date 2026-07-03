@@ -200,13 +200,16 @@ function addResearch(game, n) {
   if (game.pendingPicks > 0 && game.runningState === 'playing') game.openUpgrade?.();
 }
 
-export function damageBase(game, n) {
+// x/y is where the hit landed (defaults to just above the dome centre so a
+// caller without a position still ripples somewhere sane).
+export function damageBase(game, n, x = game.bx, y = game.by - 20) {
   const p = game.p;
   game.shieldCooldown = p.shieldDelay; // any hit pauses shield recharge
   if (p.shield > 0 && n > 0) {       // shield absorbs first
     const absorbed = Math.min(p.shield, n);
     p.shield -= absorbed; n -= absorbed;
-    game.shieldFlash = 1;
+    game.shieldFx.registerImpact(game, x, y);
+    if (p.shield <= 0) game.shieldFx.triggerBreak(game); // this hit felled the dome
   }
   if (n > 0) {                        // overflow hits the hull
     p.baseHP -= n;

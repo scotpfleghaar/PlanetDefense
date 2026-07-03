@@ -46,6 +46,12 @@ export class Enemy {
       const wob = Math.sin(game.t * 3 + e.phase) * e.weave * game.p.slow * game.weatherSlow;
       vx += (-dy/d) * wob; vy += (dx/d) * wob;
     }
+    if (e.kbT > 0) {          // shield-break shove — dominates steering, then eases back out
+      e.kbT = Math.max(0, e.kbT - dt);
+      const k = e.kbT / e.kbDur; // 1 → 0
+      vx = e.kbVx * k + vx * (1 - k);
+      vy = e.kbVy * k + vy * (1 - k);
+    }
     e.vx = vx; e.vy = vy; // remembered so debris can inherit momentum
     e.x += vx * dt;
     e.y += vy * dt;

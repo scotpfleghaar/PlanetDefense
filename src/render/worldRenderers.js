@@ -1,6 +1,7 @@
 import { WEAPONS } from '../data/weapons.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { turretLayout } from './turretLayout.js';
+import { drawShield } from './shieldRenderer.js';
 import { cloudLitSprite, cloudSprite, cloudDarkSprite } from './sprites.js';
 import { cloudNoiseTex } from './noise.js';
 
@@ -164,7 +165,6 @@ export function drawBase(ctx, game, x, y, hpFrac, flash) {
   const L = turretLayout(p);
   const hw = L.hw;
   const arcR = hw + 6;
-  const shR  = hw + 22;
 
   ctx.save();
   ctx.translate(x, y);
@@ -200,16 +200,8 @@ export function drawBase(ctx, game, x, y, hpFrac, flash) {
   ctx.strokeStyle = hpFrac > 0.3 ? '#1E7F4F' : '#FC3D21';
   ctx.beginPath(); ctx.arc(0, 0, arcR, Math.PI*0.15, Math.PI*0.15 + Math.PI*0.7*hpFrac); ctx.stroke();
 
-  // shield dome — brightness tracks remaining shield; pulses when it absorbs a hit
-  if (p.shieldMax > 0 && p.shield > 0) {
-    const sf = p.shield / p.shieldMax;
-    const fl = game.shieldFlash;
-    ctx.fillStyle = `rgba(55,166,230,${0.04 + sf*0.05 + fl*0.13})`;
-    ctx.beginPath(); ctx.arc(0, 4, shR, Math.PI, 2*Math.PI); ctx.closePath(); ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgba(55,166,230,${0.22 + sf*0.5 + fl*0.35})`;
-    ctx.beginPath(); ctx.arc(0, 4, shR, Math.PI, 2*Math.PI); ctx.stroke();
-  }
+  // shield dome — hex lattice, impact ripples and fresnel rim (see shieldRenderer.js)
+  drawShield(ctx, game);
   ctx.restore();
 }
 

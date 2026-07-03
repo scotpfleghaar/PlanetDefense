@@ -1,6 +1,7 @@
 import { save } from '../state/save.js';
 import { Player } from '../entities/Player.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
+import { ShieldSystem } from '../systems/ShieldSystem.js';
 import { WaveManager } from '../systems/WaveManager.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { TruckSystem } from '../systems/TruckSystem.js';
@@ -23,7 +24,8 @@ export class Game {
     this.waves = new WaveManager();
     this.turretTimers = []; this.beams = []; this.buildings = [];
     this.research = 0; this.researchNeed = 120; this.pendingPicks = 0;
-    this.flashBase = 0; this.shake = 0; this.shieldCooldown = 0; this.shieldFlash = 0;
+    this.flashBase = 0; this.shake = 0; this.shieldCooldown = 0;
+    this.shieldFx = new ShieldSystem(); // ripples/flicker/break FX (shield HP lives on p)
     this.locks = []; this.barrelAngles = []; this.t = 0;
     // weather: storm/weatherRange/weatherSlow are gameplay multipliers rolled by
     // WaveManager each wave; `weather` holds the cloud/rain/lightning animation state.
@@ -88,7 +90,7 @@ export class Game {
     for (const e of this.enemies) {
       e.update(dt, this);
       if (e.reachedBase) {
-        damageBase(this, e.dmg);
+        damageBase(this, e.dmg, e.x, e.y);
         this.particles.spawnBurst(e.x, e.y, e.color, 6);
       }
     }
@@ -133,10 +135,10 @@ export class Game {
     const p = this.p;
     if (this.shieldCooldown > 0) this.shieldCooldown = Math.max(0, this.shieldCooldown - dt);
     else if (p.shield < p.shieldMax) p.shield = Math.min(p.shieldMax, p.shield + p.shieldRegen * dt);
+    this.shieldFx.update(this, dt); // after regen, so it sees this frame's rebuild edge
 
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 60);
     if (this.flashBase > 0) this.flashBase = Math.max(0, this.flashBase - dt * 3);
-    if (this.shieldFlash > 0) this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
     this.t += dt;
   }
 }

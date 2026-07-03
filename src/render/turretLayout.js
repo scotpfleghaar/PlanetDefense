@@ -21,3 +21,9 @@ export function turretLayout(p) {
   }
   return { hw, sr, blen, bthick, n, stacked, xs, platformTop, muzzleY: platformTop - sr };
 }
+
+// Radius of the base's shield dome — shared by rendering, debris physics and the
+// break shockwave so they always agree on where the surface is.
+export function shieldRadius(p) {
+  return turretLayout(p).hw + 22;
+}

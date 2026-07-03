@@ -1,4 +1,5 @@
-import { turretLayout } from '../render/turretLayout.js';
+import { shieldRadius } from '../render/turretLayout.js';
+import { SHIELD } from '../data/tuning.js';
 
 // Sparks, debris and weather wisps. Plain sparks fade fast; debris keeps its
 // momentum, bounces off a raised shield, and gently crashes / settles onto
@@ -41,10 +42,29 @@ export class ParticleSystem {
     }
   }
 
+  // The dome shattering: shards seeded along the arc and flung outward, then the
+  // normal debris physics (coast, ground bounce/settle) takes over. The shield is
+  // already down when these spawn, so the dome-bounce branch below ignores them.
+  spawnShieldShards(cx, cy, shR) {
+    const colors = ['#8FD4FF', '#CFEFFF', '#37A6E6'];
+    for (let i = 0; i < SHIELD.shardCount; i++) {
+      const a = Math.PI + Math.random() * Math.PI; // somewhere on the dome surface
+      const s = 90 + Math.random() * 130;
+      this.particles.push({
+        x: cx + Math.cos(a) * shR, y: cy + Math.sin(a) * shR,
+        vx: Math.cos(a) * s + (Math.random() - 0.5) * 30,
+        vy: Math.sin(a) * s + (Math.random() - 0.5) * 30,
+        life: 1.0 + Math.random() * 1.0,
+        color: colors[i % colors.length], size: 1.4 + Math.random() * 2.2,
+        phys: true, rest: 0,
+      });
+    }
+  }
+
   update(game, dt) {
     const p = game.p;
     const shieldUp = p.shield > 0 && p.shieldMax > 0;
-    const shR = shieldUp ? turretLayout(p).hw + 22 : 0;
+    const shR = shieldUp ? shieldRadius(p) : 0;
     for (const pa of this.particles) {
       if (pa.phys) {
         // gravity disabled — debris coasts purely along the enemy's heading
@@ -56,7 +76,7 @@ export class ParticleSystem {
               pa.vx = (pa.vx - 1.7*vdot*nx) * 0.7;
               pa.vy = (pa.vy - 1.7*vdot*ny) * 0.7;
               pa.x = game.bx + nx*shR; pa.y = (game.by + 4) + ny*shR;
-              game.shieldFlash = Math.max(game.shieldFlash, 0.4);
+              game.shieldFx.registerImpact(game, pa.x, pa.y, 0.4);
             }
           }
         }
