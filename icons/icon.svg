@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- paper background with blueprint grid -->
+  <rect width="512" height="512" fill="#F3F5F8"/>
+  <g stroke="#0B3D91" stroke-opacity="0.07" stroke-width="1">
+    <path d="M64 0V512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512M448 0V512"/>
+    <path d="M0 64H512M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M0 448H512"/>
+  </g>
+
+  <!-- planet -->
+  <circle cx="256" cy="310" r="148" fill="#0B3D91"/>
+  <!-- planet surface highlight -->
+  <path d="M148 240 A148 148 0 0 1 364 240" fill="none" stroke="#7FA8E0" stroke-opacity="0.5" stroke-width="10" stroke-linecap="round"/>
+  <!-- ground grid hint on planet -->
+  <path d="M120 340 H392 M136 380 H376" stroke="#F3F5F8" stroke-opacity="0.18" stroke-width="4"/>
+
+  <!-- turret on planet top -->
+  <path d="M236 172 L276 172 L268 138 L244 138 Z" fill="#0A0E14"/>
+  <rect x="250" y="112" width="12" height="30" fill="#0A0E14"/>
+
+  <!-- shield arc -->
+  <path d="M77.5 245 A190 190 0 0 1 434.5 245" fill="none" stroke="#FC3D21" stroke-width="20" stroke-linecap="round"/>
+  <path d="M96 280 A170 170 0 0 1 130 205" fill="none" stroke="#FC3D21" stroke-opacity="0.35" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- falling core -->
+  <circle cx="256" cy="72" r="16" fill="#C98A00"/>
+  <path d="M256 40 V22" stroke="#C98A00" stroke-width="6" stroke-linecap="round"/>
+</svg>

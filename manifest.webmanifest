@@ -1,0 +1,24 @@
+{
+  "name": "Planet Defense",
+  "short_name": "Defense",
+  "description": "Orbital defense protocol. Your turrets fire themselves — you choose how they evolve.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "background_color": "#F3F5F8",
+  "theme_color": "#F3F5F8",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
