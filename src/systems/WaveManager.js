@@ -1,6 +1,7 @@
 import { Enemy } from '../entities/Enemy.js';
 import { Boss } from '../entities/Boss.js';
 import { buildWaveComposition } from '../data/waveArchetypes.js';
+import { rollRank } from '../data/ranks.js';
 import { WAVE, WEATHER, BOSS, PRESTIGE } from '../data/tuning.js';
 import { save } from '../state/save.js';
 
@@ -42,7 +43,7 @@ export class WaveManager {
     if (edge < 0.7) { x = 14 + Math.random() * (game.W - 28); y = -14; }
     else if (edge < 0.85) { x = -14; y = Math.random() * (game.H * 0.4); }
     else { x = game.W + 14; y = Math.random() * (game.H * 0.4); }
-    game.enemies.push(new Enemy(spec.type, spec.hpMult, spec.speedMult, x, y));
+    game.enemies.push(new Enemy(spec.type, spec.hpMult, spec.speedMult, x, y, spec.rank));
   }
 
   next(game) {
@@ -66,12 +67,13 @@ export class WaveManager {
       return;
     }
     const { types } = buildWaveComposition(w, count);
-    const q = types.map(type => ({ type, hpMult, speedMult }));
+    // NG+ elites: each spawn may roll a rank (chance and tiers scale with prestige)
+    const q = types.map(type => ({ type, hpMult, speedMult, rank: rollRank(pl) }));
     // carriers: ~1 per wave from wave 2, scaled by beacon meta
     const carriers = Math.max(0, Math.round((w >= 2 ? 1 : 0) * game.p.carrierBoost) + (w >= 5 ? 1 : 0));
     for (let i = 0; i < carriers; i++) {
       const at = Math.floor(Math.random() * q.length);
-      q.splice(at, 0, { type:'carrier', hpMult, speedMult });
+      q.splice(at, 0, { type:'carrier', hpMult, speedMult, rank: rollRank(pl) });
     }
     this.queue = q;
     this.spawnGap = Math.max(WAVE.spawnGapMin, WAVE.spawnWindow / q.length); // spread the wave over ~spawnWindow seconds

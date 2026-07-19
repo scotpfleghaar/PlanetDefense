@@ -418,6 +418,15 @@ export function drawEnemy(ctx, e, game) {
     ctx.closePath(); ctx.fill();
   }
 
+  // rank halo — pulsing ring in the rank's color behind the craft
+  if (e.rank) {
+    ctx.strokeStyle = e.rankColor;
+    ctx.globalAlpha = 0.45 + 0.25 * Math.sin(game.t * 4 + e.phase);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 4, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
   ctx.save();
   ctx.translate(e.x, e.y);
   const hpFrac = e.hp / e.maxhp;
@@ -429,11 +438,31 @@ export function drawEnemy(ctx, e, game) {
   renderer(ctx, e, game, { hpFrac, heading, flick });
 
   ctx.restore();
-  // hp bar for tougher enemies (the boss draws its own wide bar)
-  if (hpFrac < 1 && e.r >= 13 && e.type !== 'boss') {
+  // overshield bubble — brightens and flares when hit, dims as it drains
+  if (e.maxShield && e.shield > 0) {
+    const sf = e.shield / e.maxShield, flare = e.shieldFx || 0;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 6, 0, 6.2832);
+    ctx.strokeStyle = '#7FA8E0';
+    ctx.lineWidth = 1.5 + flare * 2;
+    ctx.globalAlpha = 0.22 + sf * 0.3 + flare * 0.4;
+    ctx.stroke();
+    ctx.fillStyle = '#7FA8E0';
+    ctx.globalAlpha = 0.05 + flare * 0.15;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // hp bar for tougher/ranked enemies (the boss draws its own wide bar)
+  if (hpFrac < 1 && (e.r >= 13 || e.rank) && e.type !== 'boss') {
     ctx.fillStyle = 'rgba(11,61,145,0.18)';
     ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2, 3);
     ctx.fillStyle = e.type === 'carrier' ? '#C98A00' : '#FC3D21';
     ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2*hpFrac, 3);
+  }
+  // shield bar above the hp bar
+  if (e.maxShield && e.shield < e.maxShield && e.type !== 'boss') {
+    ctx.fillStyle = 'rgba(127,168,224,0.18)';
+    ctx.fillRect(e.x - e.r, e.y - e.r - 11, e.r*2, 3);
+    ctx.fillStyle = '#7FA8E0';
+    ctx.fillRect(e.x - e.r, e.y - e.r - 11, e.r*2*(e.shield/e.maxShield), 3);
   }
 }

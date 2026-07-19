@@ -1,11 +1,12 @@
 import { ENEMY_DEFS } from '../data/enemies.js';
+import { RANKS } from '../data/ranks.js';
 
 // One hostile craft/asteroid. Behavior is data-driven off ENEMY_DEFS rather than
 // a subclass per type — the 15 types share this exact update loop and only differ
 // in a handful of optional behavior flags (weave/cloak/spawner/healer/blink) plus
 // their bespoke render function (see render/enemyRenderers.js).
 export class Enemy {
-  constructor(type, hpMult, speedMult, x, y) {
+  constructor(type, hpMult, speedMult, x, y, rank = null) {
     const def = ENEMY_DEFS[type];
     this.type = type; this.x = x; this.y = y; this.r = def.r;
     this.hp = def.hp * hpMult; this.maxhp = def.hp * hpMult;
@@ -34,6 +35,32 @@ export class Enemy {
     if (def.cloak)   { this.cloak = def.cloak; this.solid = true; this.phased = false; this.fade = 1; this.cloakT = def.cloak.solid * (0.4 + Math.random() * 0.8); }
     if (def.healer)  { this.healer = def.healer; this.healT = def.healer.interval * (0.5 + Math.random() * 0.8); this.pulse = 0; }
     if (def.blink)   { this.blink = def.blink; this.blinkT = def.blink.interval * (0.7 + Math.random() * 0.6); this.blinkFx = 0; }
+
+    // generic attributes any enemy can carry — from its base def, its rank, or both
+    this.applyAttributes(def);
+    if (rank && RANKS[rank]) {
+      this.rank = rank;
+      this.rankColor = RANKS[rank].color;
+      this.applyAttributes(RANKS[rank]);
+    }
+  }
+
+  // Apply a generic attribute bundle (stat mults + regen + shield). Works for any
+  // enemy type: stats scale multiplicatively, regen stacks, the stronger shield wins.
+  applyAttributes(src) {
+    if (src.hpMult)    { this.maxhp *= src.hpMult; this.hp = this.maxhp; }
+    if (src.speedMult) this.speed *= src.speedMult;
+    if (src.ptsMult)   this.pts = Math.round(this.pts * src.ptsMult);
+    if (src.regen)     this.regen = (this.regen || 0) + src.regen; // frac of maxhp per second
+    if (src.shield) {
+      const max = src.shield.frac * this.maxhp;
+      if (!this.maxShield || max > this.maxShield) {
+        this.maxShield = max; this.shield = max;
+        this.shieldRegen = src.shield.regen * max; // hp/s once recharging
+        this.shieldDelay = src.shield.delay;       // seconds unhit before recharge
+        this.shieldT = 0; this.shieldFx = 0;
+      }
+    }
   }
 
   update(dt, game) {
@@ -105,6 +132,14 @@ export class Enemy {
       }
     }
     if (e.blinkFx) e.blinkFx = Math.max(0, e.blinkFx - dt * 4);
+
+    // ── generic attributes (ranks / def) ──
+    if (e.regen && e.hp < e.maxhp) e.hp = Math.min(e.maxhp, e.hp + e.regen * e.maxhp * dt);
+    if (e.maxShield && e.shield < e.maxShield) { // recharge after a spell unhit
+      e.shieldT = Math.max(0, e.shieldT - dt);
+      if (e.shieldT <= 0) e.shield = Math.min(e.maxShield, e.shield + e.shieldRegen * dt);
+    }
+    if (e.shieldFx) e.shieldFx = Math.max(0, e.shieldFx - dt * 4);
 
     // reached base? — flagged here, resolved by Game.update (damage + burst + removal)
     if (d < 30 + e.r) {

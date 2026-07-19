@@ -157,6 +157,14 @@ export function explode(game, x, y, radius, dmg) {
 // Apply damage to an enemy (armored types take reduced damage) and handle its death.
 export function damageEnemy(game, e, dmg) {
   if (e.dead || e.phased) return; // faded phantoms are immune
+  if (e.shield > 0) {             // overshield soaks first (unmitigated by armor)
+    e.shieldT = e.shieldDelay;    // any hit resets the recharge delay
+    const absorbed = Math.min(e.shield, dmg);
+    e.shield -= absorbed; dmg -= absorbed;
+    e.shieldFx = 1;
+    if (e.shield <= 0) game.particles.spawnBurst(e.x, e.y, '#7FA8E0', 6); // shield pop
+    if (dmg <= 0) return;
+  }
   e.hp -= e.armor ? dmg * (1 - e.armor) : dmg;
   if (e.hp <= 0) killEnemy(game, e);
 }

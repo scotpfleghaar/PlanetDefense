@@ -1,6 +1,6 @@
 // Planet Defense — offline service worker.
 // Bump the version whenever game files change so installed tablets pick up the update.
-const VERSION = 'pd-v6';
+const VERSION = 'pd-v7';
 
 const APP_SHELL = [
   './',
@@ -17,6 +17,7 @@ const APP_SHELL = [
   'src/data/buildings.js',
   'src/data/enemies.js',
   'src/data/metaUpgrades.js',
+  'src/data/ranks.js',
   'src/data/tuning.js',
   'src/data/upgrades.js',
   'src/data/waveArchetypes.js',

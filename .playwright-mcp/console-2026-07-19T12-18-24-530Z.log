@@ -1,0 +1,2 @@
+[     334ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8123/icons/icon.svg:0
+[   21953ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8123/src/data/ranks.js:0
