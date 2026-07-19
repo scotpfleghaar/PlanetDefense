@@ -8,6 +8,9 @@ export function syncTitle() {
   $('t-best').textContent = save.best.toLocaleString();
   $('t-runs').textContent = save.runs;
   $('t-wave').textContent = save.deepestWave;
+  const ps = $('t-prestige');
+  ps.style.display = save.prestige > 0 ? '' : 'none';
+  if (save.prestige > 0) ps.textContent = `★ Prestige ${save.prestige} — hostiles are ${Math.round(save.prestige * 25)}% stronger`;
   syncAutopick();
 }
 

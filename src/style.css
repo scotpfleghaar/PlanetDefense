@@ -226,6 +226,7 @@
     }
     .wave-banner.show { opacity: 1; }
     .wave-banner.storm { background: rgba(20,28,45,0.9); }
+    .wave-banner.boss { background: rgba(252,61,33,0.92); }
 
     /* paused overlay */
     .pause-overlay {
@@ -304,6 +305,7 @@
       font-size: 1.7rem; letter-spacing: 0.04em; margin-bottom: 0.3rem;
     }
     #report h1.destroyed { color: var(--vermilion); }
+    #report h1.victory { color: var(--green); }
     #report .r-date { font-family: var(--mono); font-size: 0.8rem; color: var(--steel); }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; }
     .stat-cell { padding: 0.9rem 0.75rem; border-top: 1px solid var(--line); }
@@ -319,6 +321,25 @@
       display: flex; justify-content: space-between; align-items: center;
     }
     .salvage-banner b { color: var(--gold); font-weight: 600; font-size: 1.1rem; }
+
+    /* ── Prestige ── */
+    .prestige-strip {
+      font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--gold);
+      border: 1px solid var(--gold); background: var(--panel);
+      padding: 0.55rem 0.9rem; margin-bottom: 1.25rem; text-align: center;
+    }
+    .prestige-reward {
+      border: 1px solid var(--green); border-left: 3px solid var(--green);
+      background: var(--panel); padding: 0.9rem 1rem; margin-bottom: 1rem;
+    }
+    .prestige-reward .pr-head { margin-bottom: 0.7rem; }
+    .prestige-reward .pr-head .eyebrow { color: var(--green); display: block; }
+    .prestige-reward .pr-note {
+      font-family: var(--mono); font-size: 0.72rem; color: var(--steel);
+      line-height: 1.4; display: block; margin-top: 0.25rem;
+    }
+    .prestige-reward .pr-body { display: flex; flex-direction: column; gap: 0.6rem; }
 
     @media (prefers-reduced-motion: reduce) {
       .wave-banner, .card, .modal { transition: none !important; animation: none !important; }

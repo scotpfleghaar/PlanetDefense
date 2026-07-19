@@ -119,6 +119,12 @@ export function updateProjectiles(game, dt) {
     if (pr.x < -30 || pr.x > game.W+30 || pr.y < -30 || pr.y > game.H+30 || pr.life <= 0) {
       if (pr.splash && pr.life <= 0) explode(game, pr.x, pr.y, pr.splash, pr.dmg);
       pr.dead = true;
+    } else if (pr.hostile) { // boss fire — streaks at the base, bursts on the dome
+      if (Math.hypot(pr.x - game.bx, pr.y - (game.by - 14)) < 32) {
+        damageBase(game, pr.dmg, pr.x, pr.y);
+        game.particles.spawnBurst(pr.x, pr.y, '#FC3D21', 6);
+        pr.dead = true;
+      }
     } else {
       for (const e of game.enemies) {
         if (e.dead || e.phased || pr.hit.has(e)) continue; // shots pass through faded phantoms

@@ -1,6 +1,7 @@
 import { Enemy } from '../entities/Enemy.js';
+import { Boss } from '../entities/Boss.js';
 import { buildWaveComposition } from '../data/waveArchetypes.js';
-import { WAVE, WEATHER } from '../data/tuning.js';
+import { WAVE, WEATHER, BOSS, PRESTIGE } from '../data/tuning.js';
 import { save } from '../state/save.js';
 
 // Wave counter + spawn queue. Also rolls each wave's weather (storm on/off and
@@ -13,9 +14,15 @@ export class WaveManager {
     this.spawnTimer = 0;
     this.spawnGap = 0.5;
     this.betweenWaves = 1.0;
+    this.boss = null;   // the wave-50 Dreadnought, once spawned
+    this.won = false;
   }
 
   update(game, dt) {
+    if (this.boss) { // boss wave: no further waves — its death is the run's victory
+      if (this.boss.dead && !this.won) { this.won = true; game.winRun?.(); }
+      return;
+    }
     if (this.queue.length > 0) {
       this.spawnTimer -= dt;
       while (this.queue.length > 0 && this.spawnTimer <= 0) { // spread evenly across the spawn window
@@ -42,10 +49,22 @@ export class WaveManager {
     this.wave++;
     save.deepestWave = Math.max(save.deepestWave, this.wave);
     const w = this.wave;
+    // NG+ (prestige) scaling stacks on top of the per-wave formulas, from wave 1
+    const pl = save.prestige || 0;
     // count grows without bound as waves progress (linear + accelerating term)
-    const count = WAVE.baseCount + Math.floor(w * WAVE.countLinear + w * w * WAVE.countQuad);
-    const hpMult = 1 + (w-1) * WAVE.hpPerWave;
-    const speedMult = 1 + (w-1) * WAVE.speedPerWave;
+    const count = Math.round((WAVE.baseCount + Math.floor(w * WAVE.countLinear + w * w * WAVE.countQuad))
+                             * (1 + pl * PRESTIGE.countPerLevel));
+    const hpMult = (1 + (w-1) * WAVE.hpPerWave) * (1 + pl * PRESTIGE.hpPerLevel);
+    const speedMult = (1 + (w-1) * WAVE.speedPerWave) * (1 + pl * PRESTIGE.speedPerLevel);
+
+    if (w === BOSS.wave) { // the Dreadnought replaces the normal wave — victory ends the run
+      this.boss = new Boss(game, hpMult, speedMult);
+      game.enemies.push(this.boss);
+      this.queue = [];
+      game.storm = false; game.weatherRange = 1; game.weatherSlow = 1;
+      game.onWaveStart?.(w, false, true);
+      return;
+    }
     const { types } = buildWaveComposition(w, count);
     const q = types.map(type => ({ type, hpMult, speedMult }));
     // carriers: ~1 per wave from wave 2, scaled by beacon meta

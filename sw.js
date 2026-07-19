@@ -1,6 +1,6 @@
 // Planet Defense — offline service worker.
 // Bump the version whenever game files change so installed tablets pick up the update.
-const VERSION = 'pd-v2';
+const VERSION = 'pd-v3';
 
 const APP_SHELL = [
   './',
@@ -21,6 +21,7 @@ const APP_SHELL = [
   'src/data/upgrades.js',
   'src/data/waveArchetypes.js',
   'src/data/weapons.js',
+  'src/entities/Boss.js',
   'src/entities/Building.js',
   'src/entities/Enemy.js',
   'src/entities/Player.js',

@@ -293,6 +293,71 @@ const RENDERERS = {
     ctx.save(); ctx.translate( e.r * 0.3, 0); polyPath(ctx, 6, e.r * 0.14, 0); ctx.fill(); ctx.restore();
   },
 
+  boss(ctx, e, game, { hpFrac }) { // the wave-50 Dreadnought — layered command ship
+    // spinal-beam telegraph — a pulsing sightline from the keel to the base
+    if (e.beamChargeT > 0) {
+      const pulse = 0.25 + 0.45 * Math.abs(Math.sin(game.t * 14));
+      ctx.strokeStyle = `rgba(252,61,33,${pulse})`; ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(0, e.r * 0.6); ctx.lineTo(game.bx - e.x, game.by - 20 - e.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // volley charge glow under the keel
+    if (e.chargeT > 0) {
+      const k = 1 - Math.min(1, e.chargeT / 0.8);
+      ctx.fillStyle = `rgba(252,61,33,${0.15 + k * 0.45})`;
+      ctx.beginPath(); ctx.arc(0, e.r * 0.6, 5 + k * 7, 0, 6.2832); ctx.fill();
+    }
+    // outer hull ring, slow self-rotation
+    ctx.save();
+    ctx.rotate(e.phase * 0.08);
+    ctx.fillStyle = e.color;
+    ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 3;
+    polyPath(ctx, 12, e.r, Math.PI / 12); ctx.fill(); ctx.stroke();
+    // hazard ticks on alternating facets
+    ctx.strokeStyle = 'rgba(252,61,33,0.75)'; ctx.lineWidth = 2.5;
+    for (let i = 0; i < 12; i += 2) {
+      const a = Math.PI / 12 + (i + 0.5) * Math.PI / 6;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * e.r * 0.84, Math.sin(a) * e.r * 0.84);
+      ctx.lineTo(Math.cos(a) * e.r * 0.96, Math.sin(a) * e.r * 0.96);
+      ctx.stroke();
+    }
+    // phase-2 armor plating — steel segments ringing the hull while armor holds
+    if (e.stage >= 2) {
+      ctx.fillStyle = '#5B6471'; ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 8; i++) {
+        const a1 = i * Math.PI / 4 + 0.08, a2 = (i + 1) * Math.PI / 4 - 0.08;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.r * 1.12, a1, a2);
+        ctx.arc(0, 0, e.r * 1.0, a2, a1, true);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+    // counter-rotating command platform
+    ctx.save();
+    ctx.rotate(-e.phase * 0.2);
+    ctx.fillStyle = '#3A4250';
+    ctx.strokeStyle = '#0A0E14'; ctx.lineWidth = 2;
+    polyPath(ctx, 6, e.r * 0.58, 0); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(127,168,224,0.35)'; ctx.lineWidth = 1.5;
+    polyPath(ctx, 6, e.r * 0.42, 0); ctx.stroke();
+    ctx.restore();
+    // reactor core — blue → gold → angry vermilion as phases advance
+    const coreCol = e.stage === 1 ? '11,61,145' : e.stage === 2 ? '201,138,0' : '252,61,33';
+    const beat = 0.5 + 0.4 * Math.sin(game.t * (3 + e.stage * 2) + e.phase);
+    ctx.fillStyle = `rgba(${coreCol},${beat})`;
+    polyPath(ctx, 6, e.r * 0.24, Math.PI / 6); ctx.fill();
+    ctx.fillStyle = '#F3F5F8';
+    ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, 6.2832); ctx.fill();
+    // wide hull-integrity bar above the ship (replaces the tiny generic bar)
+    ctx.fillStyle = 'rgba(10,14,20,0.25)';
+    ctx.fillRect(-e.r * 1.3, -e.r - 16, e.r * 2.6, 5);
+    ctx.fillStyle = '#FC3D21';
+    ctx.fillRect(-e.r * 1.3, -e.r - 16, e.r * 2.6 * hpFrac, 5);
+  },
+
   drone(ctx, e, game, { heading, flick }) { // small blueprint-blue craft (also the default)
     ctx.rotate(heading);
     // engine flicker at the tail
@@ -364,8 +429,8 @@ export function drawEnemy(ctx, e, game) {
   renderer(ctx, e, game, { hpFrac, heading, flick });
 
   ctx.restore();
-  // hp bar for tougher enemies
-  if (hpFrac < 1 && e.r >= 13) {
+  // hp bar for tougher enemies (the boss draws its own wide bar)
+  if (hpFrac < 1 && e.r >= 13 && e.type !== 'boss') {
     ctx.fillStyle = 'rgba(11,61,145,0.18)';
     ctx.fillRect(e.x - e.r, e.y - e.r - 7, e.r*2, 3);
     ctx.fillStyle = e.type === 'carrier' ? '#C98A00' : '#FC3D21';

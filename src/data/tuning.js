@@ -9,6 +9,29 @@ export const WAVE = {
   spawnGapMin: 0.02,     // floor on the per-enemy gap
 };
 
+// The wave-50 Dreadnought. Its HP rides the normal per-wave hpMult (so prestige
+// scaling applies automatically); everything else here is the fight's own shape.
+export const BOSS = {
+  wave: 50,            // the run ends in victory when this wave's boss falls
+  hp: 520,             // × the wave's hpMult (≈8.8 at wave 50, more with prestige)
+  r: 40,
+  pts: 2000,
+  hoverFrac: 0.24,     // hover altitude as a fraction of screen height
+  swayFrac: 0.16,      // horizontal sway amplitude as a fraction of screen width
+  descentSpeed: 46,
+  volley: { interval: 4.2, charge: 0.8, shots: 3, spread: 0.5, speed: 150, dmg: 14 },
+  phase2: { at: 0.66, armor: 0.3, escortEvery: 7, escorts: ['sprinter', 'weaver', 'drone'] },
+  phase3: { at: 0.33, volleyMult: 0.55, beamEvery: 9, beamCharge: 1.6, beamDmg: 55 },
+};
+
+// NG+ scaling per prestige level (victories). Applied on top of the normal
+// per-wave formulas in WaveManager, from wave 1.
+export const PRESTIGE = {
+  hpPerLevel: 0.25,      // +25% enemy HP per prestige level
+  speedPerLevel: 0.05,
+  countPerLevel: 0.10,
+};
+
 export const SHIELD = {
   rippleLife: 0.45,        // seconds a localized impact ripple lasts on the dome
   maxRipples: 6,           // concurrent ripple cap (oldest dropped first)

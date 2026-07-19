@@ -60,10 +60,10 @@ export class Renderer {
 
     // projectiles
     for (const pr of game.projectiles) {
-      ctx.strokeStyle = 'rgba(11,61,145,0.45)'; ctx.lineWidth = 2;
+      ctx.strokeStyle = pr.hostile ? 'rgba(252,61,33,0.5)' : 'rgba(11,61,145,0.45)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y);
       ctx.lineTo(pr.x - pr.vx*0.02, pr.y - pr.vy*0.02); ctx.stroke();
-      ctx.fillStyle = '#FC3D21';
+      ctx.fillStyle = pr.hostile ? '#20262F' : '#FC3D21';
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, 6.2832); ctx.fill();
     }
 

@@ -39,6 +39,8 @@
         <div class="ss"><div class="k">Deepest wave</div><div class="v mono" id="t-wave">0</div></div>
       </div>
 
+      <div id="t-prestige" class="prestige-strip" style="display:none"></div>
+
       <button id="launch-btn" class="btn btn-primary">Launch run</button>
       <button id="meta-btn" class="btn btn-gold">Salvage bay</button>
       <button id="autopick-btn" class="btn-ghost">Auto-pick upgrades: Off</button>
@@ -123,7 +125,7 @@
         <p><b style="color:var(--ink)">2 — Research.</b> Destroyed enemies fill the Research bar. Each fill pauses the assault and offers 3 upgrade cards — pick one to shape your run.</p>
         <p><b style="color:var(--ink)">3 — Carriers.</b> Glowing <span style="color:var(--vermilion)">vermilion</span> carriers drop a Core when destroyed. The Core falls to your base and banks permanent <span style="color:var(--gold)">Salvage</span> — but only if the base survives to collect it.</p>
         <p><b style="color:var(--ink)">4 — Salvage Bay.</b> Spend banked Salvage between runs on permanent upgrades that carry into every future run.</p>
-        <p><b style="color:var(--ink)">Goal:</b> survive the waves and score as high as you can.</p>
+        <p><b style="color:var(--ink)">Goal:</b> hold out through 50 waves and destroy the Dreadnought. Each victory raises your Prestige — future runs get harder, and you choose a permanent starting structure.</p>
         <button id="how-close" class="btn btn-primary" style="margin-top:0.5rem;">Got it</button>
       </div>
     </div>
@@ -149,6 +151,13 @@
       <div class="salvage-banner">
         <span>Salvage banked this run</span>
         <b id="r-salvage">+0</b>
+      </div>
+      <div id="r-prestige" class="prestige-reward" style="display:none">
+        <div class="pr-head">
+          <span class="eyebrow">Prestige reward</span>
+          <span class="pr-note">Choose a structure to stand at the start of every run</span>
+        </div>
+        <div id="r-prestige-body" class="pr-body"></div>
       </div>
       <button id="r-meta-btn" class="btn btn-gold">Spend in Salvage Bay</button>
       <button id="r-again-btn" class="btn btn-primary">Launch again</button>

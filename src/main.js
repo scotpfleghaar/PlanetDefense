@@ -8,6 +8,8 @@ import { attachUpgradeFlow } from './ui/upgradeModal.js';
 import { attachReportFlow, initReportScreen } from './ui/reportScreen.js';
 import { initPauseOverlay, closePauseOverlay } from './ui/pauseOverlay.js';
 import { initMetaShop } from './ui/metaShop.js';
+import { Building } from './entities/Building.js';
+import { save } from './state/save.js';
 
 initScreens();
 
@@ -24,6 +26,10 @@ function startRun() {
   attachUpgradeFlow(game, gameLoop);
   attachReportFlow(game);
   game.onWaveStart = showWaveBanner;
+  // prestige rewards: structures earned from Dreadnought victories stand from wave 1
+  for (const [type, lvl] of Object.entries(save.startBuildings || {})) {
+    if (lvl > 0) { Building.addOrUpgrade(game, type); game.buildings[game.buildings.length - 1].level = lvl; }
+  }
   closePauseOverlay();
   game.waves.next(game);
   gameLoop.start(game);

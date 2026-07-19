@@ -27,11 +27,12 @@ export function syncHud(game) {
 let wbTimer = null;
 
 // Wired as game.onWaveStart — fired by WaveManager.next().
-export function showWaveBanner(wave, storm) {
+export function showWaveBanner(wave, storm, boss) {
   const wb = $('wave-banner');
-  wb.textContent = 'Wave ' + wave + (storm ? '  ·  ⛈ STORM' : '');
+  wb.textContent = boss ? 'Wave ' + wave + '  ·  ⚠ DREADNOUGHT' : 'Wave ' + wave + (storm ? '  ·  ⛈ STORM' : '');
   wb.classList.toggle('storm', !!storm);
+  wb.classList.toggle('boss', !!boss);
   wb.classList.add('show');
   clearTimeout(wbTimer);
-  wbTimer = setTimeout(() => wb.classList.remove('show'), storm ? 2400 : 1600);
+  wbTimer = setTimeout(() => wb.classList.remove('show'), boss ? 3200 : storm ? 2400 : 1600);
 }
