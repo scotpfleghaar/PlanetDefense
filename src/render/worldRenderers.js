@@ -25,14 +25,25 @@ function ridgePath(ctx, pts, W, H) {
   ctx.closePath();
 }
 
-// Two mountain tiers on the horizon, fading with distance — drawn early so
-// everything (enemies, clouds, the hill itself) passes in front of them.
+// Three mountain tiers on the horizon — drawn early so everything (enemies,
+// clouds, the hill itself) passes in front of them. Opaque atmospheric shades
+// (blue pre-mixed onto the paper background, palest farthest) so nothing
+// bleeds through them; the tint darkens with storm overcast to match the sky.
+const MTN_TIERS = [
+  [224, 230, 240],  // farthest, palest
+  [206, 216, 232],
+  [185, 199, 222],  // nearest, strongest
+];
 export function drawMountains(ctx, game) {
   if (!game.mtnFar) return;
-  ctx.fillStyle = 'rgba(11,61,145,0.07)';  // farthest, faintest tier
-  ridgePath(ctx, game.mtnFar, game.W, game.H); ctx.fill();
-  ctx.fillStyle = 'rgba(11,61,145,0.12)';  // nearer tier, a touch stronger
-  ridgePath(ctx, game.mtnNear, game.W, game.H); ctx.fill();
+  const tiers = [game.mtnFar, game.mtnMid, game.mtnNear];
+  const a = 0.16 * (game.weather ? game.weather.cloudDark : 0); // match the overcast tint
+  for (let i = 0; i < tiers.length; i++) {
+    if (!tiers[i]) continue;
+    const [r, g, b] = MTN_TIERS[i];
+    ctx.fillStyle = `rgb(${Math.round(r + (22 - r) * a)},${Math.round(g + (30 - g) * a)},${Math.round(b + (48 - b) * a)})`;
+    ridgePath(ctx, tiers[i], game.W, game.H); ctx.fill();
+  }
 }
 
 // A tiered pine silhouette: short trunk under three stacked triangles.

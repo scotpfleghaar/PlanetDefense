@@ -70,20 +70,30 @@ export class Game {
     }
     this.hill = front; this.hillBack = back;
 
-    // two distant mountain tiers behind the hill — jagged skylines from the
-    // same hash noise; the far tier is taller and drawn fainter for depth
-    const range = (seed, baseH, peakH, step) => {
-      const n = Math.max(6, Math.round(this.W / step));
+    // three distant mountain tiers behind the hill. Ridged value noise (the
+    // fold at |2n-1| makes sharp crests and V-shaped saddles) under a slow
+    // macro envelope, so peaks vary in height instead of uniform sawtooth.
+    const vnoise = (x, seed) => {
+      const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+      const a = frac(i * 1.7 + seed), b = frac((i + 1) * 1.7 + seed);
+      return a + (b - a) * u;
+    };
+    const range = (seed, baseH, peakH) => {
+      const n = Math.max(32, Math.round(this.W / 10));
       const pts = [];
       for (let i = 0; i <= n; i++) {
-        const h = baseH + frac(i * 1.7 + seed) * peakH
-                + Math.sin(i * 2.3 + seed) * peakH * 0.22;
-        pts.push({ x: (this.W * i) / n, y: this.H - h });
+        const x = (this.W * i) / n, u = x / 150;
+        const macro = vnoise(u * 0.32, seed);                          // slow height envelope
+        const r1 = 1 - Math.abs(2 * vnoise(u * 0.9, seed + 11) - 1);   // primary crests
+        const r2 = 1 - Math.abs(2 * vnoise(u * 2.3, seed + 23) - 1);   // secondary folds
+        const shape = r1 * 0.72 + r2 * 0.28;
+        pts.push({ x, y: this.H - (baseH + peakH * shape * (0.3 + macro * 0.7)) });
       }
       return pts;
     };
-    this.mtnFar  = range(41, 80, 110, 120);
-    this.mtnNear = range(87, 50, 85, 85);
+    this.mtnFar  = range(41, 70, 150);
+    this.mtnMid  = range(87, 52, 115);
+    this.mtnNear = range(133, 36, 85);
 
     // pine trees — faint ones on the back ridge, dark ones on the front hill.
     // The centre stays clear so the base platform keeps its clean silhouette.
