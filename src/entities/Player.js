@@ -17,13 +17,14 @@ export class Player {
     }
     this.baseHP = this.baseMax;
     this.shield = this.shieldMax;
-    this.turretWeapons = new Array(this.multishot).fill('cannon'); // every turret starts as a cannon
+    this.defaultWeapon = 'cannon'; // what a fresh turret mount fires (modifiers may override)
+    this.turretWeapons = new Array(this.multishot).fill(this.defaultWeapon);
   }
 
-  // Convert one turret to a weapon — preferring a basic cannon, else any different turret.
+  // Convert one turret to a weapon — preferring a default mount, else any different turret.
   refitTurret(weaponId) {
-    while (this.turretWeapons.length < this.multishot) this.turretWeapons.push('cannon');
-    let idx = this.turretWeapons.indexOf('cannon');
+    while (this.turretWeapons.length < this.multishot) this.turretWeapons.push(this.defaultWeapon);
+    let idx = this.turretWeapons.indexOf(this.defaultWeapon);
     if (idx === -1) idx = this.turretWeapons.findIndex(w => w !== weaponId);
     if (idx === -1) idx = 0;
     this.turretWeapons[idx] = weaponId;
@@ -32,7 +33,7 @@ export class Player {
   // keep the per-turret weapon list sized to the turret count
   ensureLoadout() {
     const tw = this.turretWeapons;
-    while (tw.length < this.multishot) tw.push('cannon');
+    while (tw.length < this.multishot) tw.push(this.defaultWeapon);
     if (tw.length > this.multishot) tw.length = this.multishot;
   }
 }

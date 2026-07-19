@@ -1,0 +1,19 @@
+- generic [ref=e73]:
+  - generic:
+    - generic [ref=e75]:
+      - generic [ref=e76]: Score
+      - generic [ref=e77]: "0"
+      - generic [ref=e78]: WAVE 1
+    - generic [ref=e79]:
+      - generic [ref=e80]: Salvage +
+      - generic [ref=e81]: "0"
+      - generic [ref=e82]: 0 CORES
+    - generic [ref=e84]:
+      - generic [ref=e85]: Integrity
+      - generic [ref=e86]: 100%
+    - generic [ref=e89]:
+      - generic [ref=e90]:
+        - generic [ref=e91]: Research
+        - generic [ref=e92]: 0%
+      - button "Pause" [ref=e94] [cursor=pointer]
+  - generic: Wave 1

@@ -1,0 +1,50 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: Orbital defense protocol
+      - heading "Planet Defense" [level=1] [ref=e9]: PlanetDefense
+      - paragraph [ref=e10]: Your turrets fire themselves.You choose how they evolve.
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: Banked salvage
+        - generic [ref=e14]: "0"
+      - generic [ref=e15]:
+        - generic [ref=e16]: Best score
+        - generic [ref=e17]: "0"
+      - generic [ref=e18]:
+        - generic [ref=e19]: Runs
+        - generic [ref=e20]: "0"
+      - generic [ref=e21]:
+        - generic [ref=e22]: Deepest wave
+        - generic [ref=e23]: "0"
+    - button "Launch run" [active] [ref=e24] [cursor=pointer]
+    - button "Salvage bay" [ref=e25] [cursor=pointer]
+    - button "How it works" [ref=e26] [cursor=pointer]
+    - button "Restart — erase all progress" [ref=e27] [cursor=pointer]
+  - dialog "Run modifiers" [ref=e28]:
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - heading "Run modifiers" [level=2] [ref=e31]
+        - generic [ref=e32]: 0 ACTIVE
+      - generic [ref=e33]:
+        - button "Auto-Pick Chaos Research chooses for you — a random upgrade card is applied instantly, no pause. □ OFF" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: Auto-Pick
+            - generic [ref=e37]: Chaos
+          - generic [ref=e38]: Research chooses for you — a random upgrade card is applied instantly, no pause.
+          - generic [ref=e39]: □ OFF
+        - button "No Shield Hardcore Zero shield all run — every hit goes straight to base integrity. Shield cards are removed from research. □ OFF" [ref=e40] [cursor=pointer]:
+          - generic [ref=e41]:
+            - generic [ref=e42]: No Shield
+            - generic [ref=e43]: Hardcore
+          - generic [ref=e44]: Zero shield all run — every hit goes straight to base integrity. Shield cards are removed from research.
+          - generic [ref=e45]: □ OFF
+        - button "Missiles Only Loadout Every turret starts as a missile launcher, and new turret mounts arrive as missiles. □ OFF" [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: Missiles Only
+            - generic [ref=e49]: Loadout
+          - generic [ref=e50]: Every turret starts as a missile launcher, and new turret mounts arrive as missiles.
+          - generic [ref=e51]: □ OFF
+      - generic [ref=e52]:
+        - button "Launch" [ref=e53] [cursor=pointer]
+        - button "Back" [ref=e54] [cursor=pointer]

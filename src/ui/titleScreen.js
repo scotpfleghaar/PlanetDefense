@@ -1,7 +1,7 @@
 import { save, persist, resetSave } from '../state/save.js';
+import { MODIFIERS } from '../data/modifiers.js';
 
 const $ = id => document.getElementById(id);
-const autopickBtn = $('autopick-btn');
 
 export function syncTitle() {
   $('t-salvage').textContent = save.salvage.toLocaleString();
@@ -11,21 +11,41 @@ export function syncTitle() {
   const ps = $('t-prestige');
   ps.style.display = save.prestige > 0 ? '' : 'none';
   if (save.prestige > 0) ps.textContent = `★ Prestige ${save.prestige} — hostiles are ${Math.round(save.prestige * 25)}% stronger`;
-  syncAutopick();
 }
 
-function syncAutopick() {
-  autopickBtn.textContent = 'Auto-pick upgrades: ' + (save.autoRandom ? 'On' : 'Off');
-  autopickBtn.classList.toggle('on', !!save.autoRandom);
+// Pre-launch modifier select — toggle cards, any combination allowed.
+function renderMods() {
+  const body = $('mods-body');
+  body.innerHTML = '';
+  for (const m of MODIFIERS) {
+    const on = !!save.modifiers[m.id];
+    const btn = document.createElement('button');
+    btn.className = 'card mod-card' + (on ? ' on' : '');
+    btn.setAttribute('aria-pressed', on);
+    btn.innerHTML = `<div class="c-top"><span class="c-name">${m.name}</span><span class="c-tag">${m.tag}</span></div>
+                     <div class="c-desc">${m.desc}</div>
+                     <div class="c-state">${on ? '■ ACTIVE' : '□ OFF'}</div>`;
+    btn.addEventListener('click', () => {
+      save.modifiers[m.id] = !save.modifiers[m.id];
+      persist();
+      renderMods();
+    });
+    body.appendChild(btn);
+  }
+  const n = MODIFIERS.filter(m => save.modifiers[m.id]).length;
+  $('mods-count').textContent = `${n} ACTIVE`;
 }
 
 export function initTitleScreen({ onLaunch }) {
-  autopickBtn.addEventListener('click', () => {
-    save.autoRandom = !save.autoRandom;
-    persist();
-    syncAutopick();
+  $('launch-btn').addEventListener('click', () => {
+    renderMods();
+    $('mods-modal').classList.add('open');
   });
-  $('launch-btn').addEventListener('click', onLaunch);
+  $('mods-cancel').addEventListener('click', () => $('mods-modal').classList.remove('open'));
+  $('mods-launch').addEventListener('click', () => {
+    $('mods-modal').classList.remove('open');
+    onLaunch();
+  });
   $('how-btn').addEventListener('click', () => $('how-modal').classList.add('open'));
   $('how-close').addEventListener('click', () => $('how-modal').classList.remove('open'));
   $('reset-btn').addEventListener('click', () => $('reset-modal').classList.add('open'));

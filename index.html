@@ -43,7 +43,6 @@
 
       <button id="launch-btn" class="btn btn-primary">Launch run</button>
       <button id="meta-btn" class="btn btn-gold">Salvage bay</button>
-      <button id="autopick-btn" class="btn-ghost">Auto-pick upgrades: Off</button>
       <button id="how-btn" class="btn-ghost">How it works</button>
       <button id="reset-btn" class="btn-ghost danger">Restart — erase all progress</button>
     </div>
@@ -88,6 +87,21 @@
         <div class="p-title">Paused</div>
         <button id="resume-btn" class="btn btn-go">Resume</button>
         <button id="abort-btn" class="btn btn-quiet">Abort run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Run modifiers (pre-launch skull select) ── -->
+  <div id="mods-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Run modifiers">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Run modifiers</h2>
+        <span class="eyebrow" id="mods-count">0 ACTIVE</span>
+      </div>
+      <div class="modal-body" id="mods-body"></div>
+      <div style="padding:0 1.25rem 1.25rem; display:grid; gap:0.5rem;">
+        <button id="mods-launch" class="btn btn-primary">Launch</button>
+        <button id="mods-cancel" class="btn btn-quiet">Back</button>
       </div>
     </div>
   </div>

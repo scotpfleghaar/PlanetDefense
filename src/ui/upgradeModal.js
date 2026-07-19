@@ -1,5 +1,4 @@
 import { UPGRADES } from '../data/upgrades.js';
-import { save } from '../state/save.js';
 
 const $ = id => document.getElementById(id);
 const upgradeModal = $('upgrade-modal');
@@ -11,8 +10,8 @@ export function attachUpgradeFlow(game, gameLoop) {
 }
 
 function openUpgrade(game, gameLoop) {
-  // auto-pick mode: instantly apply a random offered card, no modal / no pause
-  if (save.autoRandom) {
+  // Auto-Pick modifier: instantly apply a random offered card, no modal / no pause
+  if (game.mods?.autopick) {
     while (game.pendingPicks > 0) {
       const picks = pick3(game);
       picks[Math.floor(Math.random() * picks.length)].apply(game.p, game);
@@ -38,7 +37,8 @@ function openUpgrade(game, gameLoop) {
 
 // rare cards (buildings) appear far less often, boosted by Construction Corps
 function pick3(game) {
-  const pool = UPGRADES.slice();
+  // No Shield modifier: shield cards would be dead picks, so drop them from the pool
+  const pool = UPGRADES.filter(c => !(game.mods?.noshield && c.shield));
   const out = [];
   const wt = c => (c.rare ? 0.18 * (game.p.buildingWeightMult || 1) : 1);
   for (let n = 0; n < 3 && pool.length; n++) {

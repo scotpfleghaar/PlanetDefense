@@ -277,6 +277,11 @@
     .card .c-tag { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vermilion); }
     .card .c-desc { font-family: var(--mono); font-size: 0.75rem; color: var(--steel); line-height: 1.45; }
 
+    /* run modifier toggle cards */
+    .mod-card .c-state { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.12em; color: var(--steel); margin-top: 0.15rem; }
+    .mod-card.on { background: var(--blue-soft); border-left-color: var(--blue); border-color: var(--blue); }
+    .mod-card.on .c-state { color: var(--blue); }
+
     /* meta shop cards */
     .shop-card {
       border: 1px solid var(--line); padding: 0.85rem 1rem;

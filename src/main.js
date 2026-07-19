@@ -10,6 +10,7 @@ import { initPauseOverlay, closePauseOverlay } from './ui/pauseOverlay.js';
 import { initMetaShop } from './ui/metaShop.js';
 import { Building } from './entities/Building.js';
 import { save } from './state/save.js';
+import { MODIFIERS } from './data/modifiers.js';
 
 initScreens();
 
@@ -23,6 +24,9 @@ function startRun() {
   showScreen('game');
   renderer.resize(null); // measure only after the game screen is visible (non-zero size)
   const game = new Game(renderer.W, renderer.H);
+  // run modifiers: snapshot the launch-screen selection so mid-run edits can't leak in
+  game.mods = { ...save.modifiers };
+  for (const m of MODIFIERS) if (game.mods[m.id] && m.apply) m.apply(game);
   attachUpgradeFlow(game, gameLoop);
   attachReportFlow(game);
   game.onWaveStart = showWaveBanner;
