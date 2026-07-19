@@ -41,10 +41,14 @@ export function drawBuilding(ctx, b) {
   ctx.translate(b.x, b.y);
   ctx.fillStyle = body;
 
-  if (b.type === 'silo') {                 // bunker with a launch hatch
+  if (b.type === 'silo') {                 // bunker with a missile poking out of the hatch
     ctx.beginPath(); ctx.moveTo(-9, 2); ctx.lineTo(-6, -9); ctx.lineTo(6, -9); ctx.lineTo(9, 2); ctx.closePath(); ctx.fill();
     ctx.fillStyle = `rgba(252,61,33,${0.45 + lit * 0.55})`;
     ctx.beginPath(); ctx.ellipse(0, -9, 5, 2.2, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#E8EAED';             // next round on the rail: body then red nose cone
+    ctx.fillRect(-2, -14, 4, 5);
+    ctx.fillStyle = '#FC3D21';
+    ctx.beginPath(); ctx.moveTo(-2, -14); ctx.quadraticCurveTo(0, -19, 2, -14); ctx.closePath(); ctx.fill();
 
   } else if (b.type === 'arc') {           // slim tower with a crackling coil orb
     ctx.fillRect(-4, -12, 8, 14);
@@ -106,6 +110,43 @@ function drawTurretUnit(ctx, tx, ty, angle, sr, blen, bthick, ink, weapon) {
   ctx.restore();
   ctx.fillStyle = ink;
   ctx.beginPath(); ctx.arc(0, 0, sr, Math.PI, 0); ctx.fill();   // dome
+  ctx.restore();
+}
+
+// A homing missile in flight: finned body + nose cone oriented along its
+// velocity, with a flickering exhaust flame trailing behind.
+export function drawMissile(ctx, pr) {
+  const L = pr.r * 3.2, hw = pr.r * 0.6;   // body length / half-width from the round's radius
+  ctx.save();
+  ctx.translate(pr.x, pr.y);
+  ctx.rotate(Math.atan2(pr.vy, pr.vx));    // nose points along travel
+
+  const flick = 0.7 + Math.random() * 0.5; // exhaust flame, jittering per frame
+  ctx.fillStyle = 'rgba(255,167,38,0.85)';
+  ctx.beginPath();
+  ctx.moveTo(-L*0.5, -hw*0.7); ctx.lineTo(-L*0.5 - L*0.55*flick, 0); ctx.lineTo(-L*0.5, hw*0.7);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,235,150,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(-L*0.5, -hw*0.35); ctx.lineTo(-L*0.5 - L*0.28*flick, 0); ctx.lineTo(-L*0.5, hw*0.35);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#20262F';               // tail fins
+  ctx.beginPath();
+  ctx.moveTo(-L*0.5, 0); ctx.lineTo(-L*0.34, -hw*2.1); ctx.lineTo(-L*0.1, -hw);
+  ctx.lineTo(-L*0.1, hw); ctx.lineTo(-L*0.34, hw*2.1);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#E8EAED';               // body
+  ctx.beginPath();
+  ctx.moveTo(-L*0.5, -hw); ctx.lineTo(L*0.2, -hw); ctx.lineTo(L*0.2, hw); ctx.lineTo(-L*0.5, hw);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#FC3D21';               // nose cone
+  ctx.beginPath();
+  ctx.moveTo(L*0.2, -hw); ctx.quadraticCurveTo(L*0.55, 0, L*0.2, hw);
+  ctx.closePath(); ctx.fill();
+
   ctx.restore();
 }
 

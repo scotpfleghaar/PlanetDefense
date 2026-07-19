@@ -1,6 +1,6 @@
 import { drawEnemy } from './enemyRenderers.js';
 import {
-  drawCore, drawHill, drawBuilding, drawBeams, drawTargeting,
+  drawCore, drawHill, drawBuilding, drawBeams, drawTargeting, drawMissile,
   drawBase, drawTruck, drawCloudsBack, drawCloudsFront, drawRain, drawLightning,
 } from './worldRenderers.js';
 import { cloudGL } from './cloudGL.js';
@@ -60,6 +60,7 @@ export class Renderer {
 
     // projectiles
     for (const pr of game.projectiles) {
+      if (pr.missile) { drawMissile(ctx, pr); continue; }
       ctx.strokeStyle = pr.hostile ? 'rgba(252,61,33,0.5)' : 'rgba(11,61,145,0.45)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y);
       ctx.lineTo(pr.x - pr.vx*0.02, pr.y - pr.vy*0.02); ctx.stroke();
