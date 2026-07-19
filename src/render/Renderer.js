@@ -1,6 +1,6 @@
 import { drawEnemy } from './enemyRenderers.js';
 import {
-  drawCore, drawHill, drawBuilding, drawBeams, drawTargeting, drawMissile,
+  drawCore, drawHill, drawMountains, drawBuilding, drawBeams, drawTargeting, drawMissile,
   drawBase, drawTruck, drawCloudsBack, drawCloudsFront, drawRain, drawLightning,
 } from './worldRenderers.js';
 import { cloudGL } from './cloudGL.js';
@@ -43,6 +43,9 @@ export class Renderer {
     if (game.weather.cloudDark > 0.01) { ctx.fillStyle = `rgba(22,30,48,${0.16 * game.weather.cloudDark})`; ctx.fillRect(-sx-20, -sy-20, W+40, H+40); }
     if (cloudGL.ok) { cloudGL.renderBack(game); ctx.drawImage(cloudGL.cv, 0, 0, W, H); }
     else drawCloudsBack(ctx, game);
+
+    // distant mountain tiers on the horizon, behind everything else
+    drawMountains(ctx, game);
 
     // range ring (shrinks during a storm)
     ctx.strokeStyle = 'rgba(11,61,145,0.12)';

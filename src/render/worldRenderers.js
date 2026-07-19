@@ -25,12 +25,39 @@ function ridgePath(ctx, pts, W, H) {
   ctx.closePath();
 }
 
+// Two mountain tiers on the horizon, fading with distance — drawn early so
+// everything (enemies, clouds, the hill itself) passes in front of them.
+export function drawMountains(ctx, game) {
+  if (!game.mtnFar) return;
+  ctx.fillStyle = 'rgba(11,61,145,0.07)';  // farthest, faintest tier
+  ridgePath(ctx, game.mtnFar, game.W, game.H); ctx.fill();
+  ctx.fillStyle = 'rgba(11,61,145,0.12)';  // nearer tier, a touch stronger
+  ridgePath(ctx, game.mtnNear, game.W, game.H); ctx.fill();
+}
+
+// A tiered pine silhouette: short trunk under three stacked triangles.
+function pine(ctx, x, y, h) {
+  ctx.fillRect(x - h * 0.05, y - h * 0.16, h * 0.1, h * 0.18);
+  const w = h * 0.36;
+  for (let i = 0; i < 3; i++) {
+    const by = y - h * (0.1 + i * 0.27), hw = w * (1 - i * 0.26);
+    ctx.beginPath();
+    ctx.moveTo(x, by - h * 0.5);
+    ctx.lineTo(x + hw, by);
+    ctx.lineTo(x - hw, by);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
 export function drawHill(ctx, game) {
   if (!game.hill) return;
   ctx.fillStyle = 'rgba(11,61,145,0.16)'; // far ridge
   ridgePath(ctx, game.hillBack, game.W, game.H); ctx.fill();
+  // pale pines on the back ridge; those behind the front hill get covered by it
+  if (game.treesBack) for (const t of game.treesBack) pine(ctx, t.x, t.y, t.h);
   ctx.fillStyle = '#0A0E14';               // near hill silhouette
   ridgePath(ctx, game.hill, game.W, game.H); ctx.fill();
+  if (game.trees) for (const t of game.trees) pine(ctx, t.x, t.y, t.h);
 }
 
 // Ground buildings — solid black silhouettes; only the glowing top accent distinguishes them.

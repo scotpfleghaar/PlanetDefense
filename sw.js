@@ -1,6 +1,6 @@
 // Planet Defense — offline service worker.
 // Bump the version whenever game files change so installed tablets pick up the update.
-const VERSION = 'pd-v5';
+const VERSION = 'pd-v6';
 
 const APP_SHELL = [
   './',

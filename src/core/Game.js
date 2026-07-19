@@ -69,6 +69,35 @@ export class Game {
       back.push({ x, y: this.H - (baseEl * 0.6 + bump * crest * 0.66 + frac(i + 9) * 7 + 10) });
     }
     this.hill = front; this.hillBack = back;
+
+    // two distant mountain tiers behind the hill — jagged skylines from the
+    // same hash noise; the far tier is taller and drawn fainter for depth
+    const range = (seed, baseH, peakH, step) => {
+      const n = Math.max(6, Math.round(this.W / step));
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const h = baseH + frac(i * 1.7 + seed) * peakH
+                + Math.sin(i * 2.3 + seed) * peakH * 0.22;
+        pts.push({ x: (this.W * i) / n, y: this.H - h });
+      }
+      return pts;
+    };
+    this.mtnFar  = range(41, 80, 110, 120);
+    this.mtnNear = range(87, 50, 85, 85);
+
+    // pine trees — faint ones on the back ridge, dark ones on the front hill.
+    // The centre stays clear so the base platform keeps its clean silhouette.
+    this.treesBack = [];
+    for (let i = 1; i < back.length - 1; i++)
+      if (frac(i + 63) < 0.4)
+        this.treesBack.push({ x: back[i].x, y: back[i].y + 3, h: 8 + frac(i + 17) * 5 });
+    this.trees = [];
+    const nT = Math.round(this.W / 48);
+    for (let i = 0; i < nT; i++) {
+      const x = ((i + 0.5) * this.W) / nT + (frac(i + 31) - 0.5) * 34;
+      if (Math.abs(x - cx) < 70 || x < 6 || x > this.W - 6) continue;
+      this.trees.push({ x, y: this.groundYAt(x) + 2, h: 11 + frac(i + 57) * 8 });
+    }
   }
 
   // Height of the rocky hill at a given x (interpolated from the silhouette profile).
