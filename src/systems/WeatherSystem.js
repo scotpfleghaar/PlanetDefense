@@ -204,9 +204,10 @@ export class WeatherSystem {
     this.lightning.push({ segs: jaggedSegments(target.x + (Math.random()-0.5)*60, -10, target.x, target.y), life: 0.32, life0: 0.32 });
     game.particles.spawnBurst(target.x, target.y, '#FFFFFF', 9);
     damageEnemy(game, target, dmg);
-    // chain to up to two nearby enemies
+    // chain to nearby enemies — one hop per wave number, so late-game storms rip
+    const maxHops = game.waves.wave;
     let from = target; const hit = new Set([target]);
-    for (let c = 0; c < 2; c++) {
+    for (let c = 0; c < maxHops; c++) {
       let nxt = null, bd = 170;
       for (const e of game.enemies) { if (e.dead || hit.has(e)) continue; const d = Math.hypot(e.x-from.x, e.y-from.y); if (d < bd) { bd = d; nxt = e; } }
       if (!nxt) break;

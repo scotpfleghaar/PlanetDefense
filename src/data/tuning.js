@@ -62,5 +62,5 @@ export const WEATHER = {
   slowMul: 0.85,                      // storm enemy-speed debuff
   rainCount: 150,
   lightningGap: [2.0, 4.5],           // seconds between strikes during a storm
-  lightningDmg: 30,                   // + 2× player damage; chains to 2 nearby
+  lightningDmg: 30,                   // + 2× player damage; chains to nearby enemies, one hop per wave number
 };
