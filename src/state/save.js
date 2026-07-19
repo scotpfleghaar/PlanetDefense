@@ -18,3 +18,8 @@ export const save = loadSave();
 export function persist() {
   try { localStorage.setItem(STORE, JSON.stringify(save)); } catch {}
 }
+
+export function resetSave() {
+  try { localStorage.removeItem(STORE); } catch {}
+  Object.assign(save, defaultSave());
+}

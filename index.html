@@ -45,6 +45,7 @@
       <button id="meta-btn" class="btn btn-gold">Salvage bay</button>
       <button id="autopick-btn" class="btn-ghost">Auto-pick upgrades: Off</button>
       <button id="how-btn" class="btn-ghost">How it works</button>
+      <button id="reset-btn" class="btn-ghost danger">Restart — erase all progress</button>
     </div>
   </div>
 
@@ -127,6 +128,18 @@
         <p><b style="color:var(--ink)">4 — Salvage Bay.</b> Spend banked Salvage between runs on permanent upgrades that carry into every future run.</p>
         <p><b style="color:var(--ink)">Goal:</b> hold out through 50 waves and destroy the Dreadnought. Each victory raises your Prestige — future runs get harder, and you choose a permanent starting structure.</p>
         <button id="how-close" class="btn btn-primary" style="margin-top:0.5rem;">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Restart confirmation ── -->
+  <div id="reset-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Erase all progress">
+    <div class="modal">
+      <div class="modal-header"><h2>Erase all progress?</h2><span class="eyebrow">NO UNDO</span></div>
+      <div class="modal-body" style="font-family:var(--mono); font-size:0.8rem; color:var(--steel); line-height:1.6;">
+        <p>This wipes <b style="color:var(--gold)">banked salvage</b>, best score, prestige, and every Salvage Bay upgrade. There is no way to get it back.</p>
+        <button id="reset-cancel" class="btn btn-primary" style="margin-top:0.5rem;">Keep my progress</button>
+        <button id="reset-confirm" class="btn btn-quiet" style="margin-top:0.5rem;">Erase everything</button>
       </div>
     </div>
   </div>

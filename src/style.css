@@ -154,6 +154,8 @@
     .btn-ghost.on { border-color: var(--blue); color: #fff; background: var(--blue); }
     .btn-ghost.on:hover { background: #0d49ad; }
     .btn-ghost:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }
+    .btn-ghost.danger { color: var(--vermilion); }
+    .btn-ghost.danger:hover { border-color: var(--vermilion); color: var(--vermilion); }
 
     /* ── Game (fullscreen) ── */
     #game { padding: 0; }

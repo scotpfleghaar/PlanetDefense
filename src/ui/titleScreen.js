@@ -1,4 +1,4 @@
-import { save, persist } from '../state/save.js';
+import { save, persist, resetSave } from '../state/save.js';
 
 const $ = id => document.getElementById(id);
 const autopickBtn = $('autopick-btn');
@@ -28,4 +28,11 @@ export function initTitleScreen({ onLaunch }) {
   $('launch-btn').addEventListener('click', onLaunch);
   $('how-btn').addEventListener('click', () => $('how-modal').classList.add('open'));
   $('how-close').addEventListener('click', () => $('how-modal').classList.remove('open'));
+  $('reset-btn').addEventListener('click', () => $('reset-modal').classList.add('open'));
+  $('reset-cancel').addEventListener('click', () => $('reset-modal').classList.remove('open'));
+  $('reset-confirm').addEventListener('click', () => {
+    resetSave();
+    $('reset-modal').classList.remove('open');
+    syncTitle();
+  });
 }

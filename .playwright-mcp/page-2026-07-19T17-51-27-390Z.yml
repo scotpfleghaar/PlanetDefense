@@ -1,0 +1,34 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e4]:
+      - generic [ref=f1e5]: Orbital defense protocol
+      - heading "Planet Defense" [level=1] [ref=f1e9]: PlanetDefense
+      - paragraph [ref=f1e10]: Your turrets fire themselves.You choose how they evolve.
+    - generic [ref=f1e11]:
+      - generic [ref=f1e12]:
+        - generic [ref=f1e13]: Banked salvage
+        - generic [ref=f1e14]: 1,234
+      - generic [ref=f1e15]:
+        - generic [ref=f1e16]: Best score
+        - generic [ref=f1e17]: 9,999
+      - generic [ref=f1e18]:
+        - generic [ref=f1e19]: Runs
+        - generic [ref=f1e20]: "7"
+      - generic [ref=f1e21]:
+        - generic [ref=f1e22]: Deepest wave
+        - generic [ref=f1e23]: "22"
+    - generic [ref=f1e29]: ★ Prestige 1 — hostiles are 25% stronger
+    - button "Launch run" [ref=f1e24] [cursor=pointer]
+    - button "Salvage bay" [ref=f1e25] [cursor=pointer]
+    - 'button "Auto-pick upgrades: Off" [ref=f1e26] [cursor=pointer]'
+    - button "How it works" [ref=f1e27] [cursor=pointer]
+    - button "Restart — erase all progress" [active] [ref=f1e28] [cursor=pointer]
+  - dialog "Erase all progress" [ref=f1e30]:
+    - generic [ref=f1e31]:
+      - generic [ref=f1e32]:
+        - heading "Erase all progress?" [level=2] [ref=f1e33]
+        - generic [ref=f1e34]: NO UNDO
+      - generic [ref=f1e35]:
+        - paragraph [ref=f1e36]: This wipes banked salvage, best score, prestige, and every Salvage Bay upgrade. There is no way to get it back.
+        - button "Keep my progress" [ref=f1e37] [cursor=pointer]
+        - button "Erase everything" [ref=f1e38] [cursor=pointer]
